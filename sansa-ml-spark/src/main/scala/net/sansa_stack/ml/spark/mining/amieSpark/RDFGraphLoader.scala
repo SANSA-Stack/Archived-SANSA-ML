@@ -17,12 +17,12 @@ object RDFGraphLoader {
   //private val logger = com.typesafe.scalalogging.slf4j.Logger(LoggerFactory.getLogger(this.getClass.getName))
   private val logger = LoggerFactory.getLogger(this.getClass.getName)
 
-  def loadFromFile(path: String, sc: SparkContext, minPartitions: Int = 2): RDFGraph = {
+  def loadFromFile(path: String, spark:SparkSession, minPartitions: Int = 2): RDFGraph = {
     logger.info("loading triples from disk...")
     val startTime = System.currentTimeMillis()
 
     val triples =
-      sc.textFile(path, minPartitions)
+      spark.sparkContext.textFile(path, minPartitions)
         .map(line => line.replace("<", "").replace(">", "").split("\\s+")) // line to tokens
         .map(tokens => RDFTriple(tokens(0), tokens(1), tokens(2).stripSuffix("."))) // tokens to triple
 
@@ -30,12 +30,12 @@ object RDFGraphLoader {
     new RDFGraph(triples)
   }
 
-  def loadGraphFromFile(path: String, session: SparkSession, minPartitions: Int = 2): RDFGraphNative = {
+  def loadGraphFromFile(path: String, spark: SparkSession, minPartitions: Int = 2): RDFGraphNative = {
     logger.info("loading triples from disk...")
     val startTime = System.currentTimeMillis()
 
     val triples =
-      session.sparkContext.textFile(path, minPartitions)
+      spark.sparkContext.textFile(path, minPartitions)
         .map(line => line.replace(">", "").replace("<", "").split("\\s+")) // line to tokens
         .map(tokens => RDFTriple(tokens(0), tokens(1), tokens(2))) // tokens to triple
 
@@ -43,8 +43,8 @@ object RDFGraphLoader {
     new RDFGraphNative(triples)
   }
 
-  def loadGraphDataFrameFromFile(path: String, session: SparkSession, minPartitions: Int = 2): RDFGraphDataFrame = {
-    new RDFGraphDataFrame(loadGraphFromFile(path, session, minPartitions).toDataFrame(session))
+  def loadGraphDataFrameFromFile(path: String, spark: SparkSession, minPartitions: Int = 2): RDFGraphDataFrame = {
+    new RDFGraphDataFrame(loadGraphFromFile(path, spark, minPartitions).toDataFrame(spark))
   }
 
 }

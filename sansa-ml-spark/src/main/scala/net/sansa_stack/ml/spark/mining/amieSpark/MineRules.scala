@@ -7,7 +7,7 @@ import net.sansa_stack.ml.spark.mining.amieSpark.KBObject.KB
 import net.sansa_stack.ml.spark.mining.amieSpark.Rules.RuleContainer
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.{ DataFrame, SQLContext, SparkSession, _ }
+import org.apache.spark.sql.{ DataFrame, SparkSession, _ }
 
 import scala.collection.mutable.{ ArrayBuffer, Map }
 import scala.util.Try
@@ -88,7 +88,7 @@ object MineRules {
       return out
     }
 
-    def ruleMining(sc: SparkContext, sqlContext: SQLContext): ArrayBuffer[RuleContainer] = {
+    def ruleMining(spark:SparkSession): ArrayBuffer[RuleContainer] = {
 
       var predicates = kb.getKbGraph().triples.map { x => x.predicate
 
@@ -106,7 +106,7 @@ object MineRules {
           var rule = ArrayBuffer(RDFTriple("?a", zz, "?b"))
 
           var rc = new RuleContainer
-          rc.initRule(rule, kb, sc, sqlContext)
+          rc.initRule(rule, kb, spark)
 
           q += rc
         }
@@ -156,7 +156,7 @@ object MineRules {
             }
             if ((counter < newTpArr.length) && (!(dublicate.contains(dubCheck)))) {
               dublicate += dubCheck
-              newRuleC.setRule(minConf, n1._2, parent, newTpArr, sortedNewTpArr, kb, sc, sqlContext)
+              newRuleC.setRule(minConf, n1._2, parent, newTpArr, sortedNewTpArr, kb, spark)
               q += newRuleC
             }
 
@@ -177,7 +177,7 @@ object MineRules {
 
             }
 
-            if (acceptedForOutput(outMap, r, minConf, kb, sc, sqlContext)) {
+            if (acceptedForOutput(outMap, r, minConf, kb, spark)) {
               out += r
 
               if (!(outMap.contains(tp(0).predicate))) {
@@ -194,7 +194,7 @@ object MineRules {
 
             if (r.getRule().length < maxLen) {
 
-              dataFrameRuleParts = refine(i, j, r, dataFrameRuleParts, sc, sqlContext)
+              dataFrameRuleParts = refine(i, j, r, dataFrameRuleParts, spark)
               //TODO: Dublicate check
 
             }
@@ -215,7 +215,7 @@ object MineRules {
      *
      */
 
-    def refine(c: Int, id: Int, r: RuleContainer, dataFrameRuleParts: RDD[(RDFTriple, Int, Int)], sc: SparkContext, sqlContext: SQLContext): RDD[(RDFTriple, Int, Int)] = {
+    def refine(c: Int, id: Int, r: RuleContainer, dataFrameRuleParts: RDD[(RDFTriple, Int, Int)], spark:SparkSession): RDD[(RDFTriple, Int, Int)] = {
 
       var out: DataFrame = null
       var OUT: RDD[(RDFTriple, Int, Int)] = dataFrameRuleParts
@@ -236,7 +236,7 @@ object MineRules {
 
       var z: Try[Row] = null
       if ((tpAr.length != maxLen - 1) && (temp == 0)) {
-        var a = kb.addDanglingAtom(c, id, minHC, r, sc, sqlContext)
+        var a = kb.addDanglingAtom(c, id, minHC, r, spark)
 
         z = Try(a.first())
         if ((!(z.isFailure)) && (z.isSuccess)) {
@@ -247,7 +247,7 @@ object MineRules {
 
       }
 
-      var b = kb.addClosingAtom(c, id, minHC, r, sc, sqlContext)
+      var b = kb.addClosingAtom(c, id, minHC, r, spark)
 
       var t = Try(b.first)
 
@@ -292,7 +292,7 @@ object MineRules {
      * @param minConf min. confidence
      *
      */
-    def acceptedForOutput(outMap: Map[String, ArrayBuffer[(ArrayBuffer[RDFTriple], RuleContainer)]], r: RuleContainer, minConf: Double, k: KB, sc: SparkContext, sqlContext: SQLContext): Boolean = {
+    def acceptedForOutput(outMap: Map[String, ArrayBuffer[(ArrayBuffer[RDFTriple], RuleContainer)]], r: RuleContainer, minConf: Double, k: KB, spark:SparkSession): Boolean = {
 
       //if ((!(r.closed())) || (r.getPcaConfidence(k, sc, sqlContext) < minConf)) {
       if ((!(r.closed())) || (r.getPcaConfidence() < minConf)) {
@@ -300,7 +300,7 @@ object MineRules {
 
       }
 
-      var parents: ArrayBuffer[RuleContainer] = r.parentsOfRule(outMap, sc)
+      var parents: ArrayBuffer[RuleContainer] = r.parentsOfRule(outMap, spark)
       if (r.getRule.length > 2) {
         for (rp <- parents) {
           if (r.getPcaConfidence() <= rp.getPcaConfidence()) {
@@ -335,7 +335,7 @@ object MineRules {
   def main(args: Array[String]) = {
     val know = new KB()
 
-    val sparkSession = SparkSession.builder
+    val spark = SparkSession.builder
 
       .master("local[*]")
       .appName("AMIESpark example")
@@ -352,18 +352,16 @@ object MineRules {
     val outputPath: String = args(1)
     val hdfsPath: String = outputPath + "/"
 
-    val sc = sparkSession.sparkContext
-    val sqlContext = new org.apache.spark.sql.SQLContext(sc)
 
     know.sethdfsPath(hdfsPath)
     know.setKbSrc(input)
 
-    know.setKbGraph(RDFGraphLoader.loadFromFile(know.getKbSrc(), sc, 2))
-    know.setDFTable(DfLoader.loadFromFileDF(know.getKbSrc, sc, sqlContext, 2))
+    know.setKbGraph(RDFGraphLoader.loadFromFile(know.getKbSrc(), spark, 2))
+    know.setDFTable(DfLoader.loadFromFileDF(know.getKbSrc, spark, 2))
 
     val algo = new Algorithm(know, 0.01, 3, 0.1, hdfsPath)
 
-    var output = algo.ruleMining(sc, sqlContext)
+    var output = algo.ruleMining(spark)
 
     var outString = output.map { x =>
       var rdfTrp = x.getRule()
@@ -378,11 +376,11 @@ object MineRules {
       temp = temp.stripSuffix(" \u2227 ")
       temp
     }.toSeq
-    var rddOut = sc.parallelize(outString)
+    var rddOut = spark.sparkContext.parallelize(outString)
 
     rddOut.saveAsTextFile(outputPath + "/testOut")
 
-    sc.stop
+    spark.stop
 
   }
 

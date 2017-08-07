@@ -3,7 +3,6 @@ package net.sansa_stack.ml.spark.mining.amieSpark
 import net.sansa_stack.ml.spark.mining.amieSpark._
 
 import org.apache.spark.SparkConf
-import org.apache.spark.SparkContext
 
 import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql._
@@ -50,28 +49,28 @@ object Rules {
     }
 
     /**initializes rule, support, bodySize and sizeHead*/
-    def initRule(x: ArrayBuffer[RDFTriple], k: KB, sc: SparkContext, sqlContext: SQLContext) {
+    def initRule(x: ArrayBuffer[RDFTriple], k: KB, spark: SparkSession) {
       this.rule = x
 
-      calcSupport(k, sc, sqlContext)
-      setBodySize(k, sc, sqlContext)
+      calcSupport(k, spark)
+      setBodySize(k, spark)
       setSizeHead(k)
 
     }
 
-    def setRule(threshold: Double, supp: Long, p: RuleContainer, x: ArrayBuffer[RDFTriple], y: ArrayBuffer[RDFTriple], k: KB, sc: SparkContext, sqlContext: SQLContext) {
+    def setRule(threshold: Double, supp: Long, p: RuleContainer, x: ArrayBuffer[RDFTriple], y: ArrayBuffer[RDFTriple], k: KB, spark: SparkSession) {
       this.rule = x
 
       this.sortedRule = y
 
       this.support = supp
 
-      setBodySize(k, sc, sqlContext)
+      setBodySize(k, spark)
       setSizeHead(k)
 
       this.parent = p
 
-      this.setPcaConfidence(threshold, k, sc, sqlContext)
+      this.setPcaConfidence(threshold, k, spark)
     }
 
     def setRuleArBuf(tp: ArrayBuffer[RDFTriple]) {
@@ -114,11 +113,11 @@ object Rules {
      *
      */
 
-    def setBodySize(k: KB, sc: SparkContext, sqlContext: SQLContext) {
+    def setBodySize(k: KB, spark: SparkSession) {
       if ((this.rule.length - 1) > 1) {
         var body = this.rule.clone
         body.remove(0)
-        var mapList = k.cardinality(body, sc, sqlContext)
+        var mapList = k.cardinality(body, spark)
 
         this.bodySize = mapList.count()
       }
@@ -133,11 +132,11 @@ object Rules {
      *
      */
 
-    def calcSupport(k: KB, sc: SparkContext, sqlContext: SQLContext) {
+    def calcSupport(k: KB, spark: SparkSession) {
 
       if (this.rule.length > 1) {
 
-        val mapList = k.cardinality(this.rule, sc, sqlContext)
+        val mapList = k.cardinality(this.rule, spark)
 
         this.support = mapList.count()
       }
@@ -203,7 +202,7 @@ object Rules {
 
     }
 
-    def setPcaConfidence(threshold: Double, k: KB, sc: SparkContext, sqlContext: SQLContext) {
+    def setPcaConfidence(threshold: Double, k: KB, spark: SparkSession) {
 
       var tparr = this.rule.clone
       val usePcaA = usePcaApprox(tparr)
@@ -216,7 +215,7 @@ object Rules {
         set_pcaConfidenceEstimation(k: KB)
         if (this._pcaConfidenceEstimation > threshold) {
 
-          this.pcaBodySize = k.cardPlusnegativeExamplesLength(tparr, this.support, sc, sqlContext)
+          this.pcaBodySize = k.cardPlusnegativeExamplesLength(tparr, this.support, spark)
 
           if (this.pcaBodySize > 0.0) {
             this.pcaConfidence = (support / pcaBodySize)
@@ -225,7 +224,7 @@ object Rules {
 
       } else {
 
-        this.pcaBodySize = k.cardPlusnegativeExamplesLength(tparr, this.support, sc, sqlContext)
+        this.pcaBodySize = k.cardPlusnegativeExamplesLength(tparr, this.support, spark)
         if (this.pcaBodySize > 0.0) {
           this.pcaConfidence = (support / pcaBodySize)
         }
@@ -238,10 +237,10 @@ object Rules {
       return this.pcaConfidence
     }
 
-    def setPcaBodySize(k: KB, sc: SparkContext) {
+    def setPcaBodySize(k: KB, spark: SparkSession) {
       val tparr = this.rule
 
-      val out = k.cardPlusnegativeExamplesLength(tparr, sc)
+      val out = k.cardPlusnegativeExamplesLength(tparr, spark)
 
       this.pcaBodySize = out
 
@@ -261,7 +260,7 @@ object Rules {
 
     }
 
-    def parentsOfRule(outMap: Map[String, ArrayBuffer[(ArrayBuffer[RDFTriple], RuleContainer)]], sc: SparkContext): ArrayBuffer[RuleContainer] = {
+    def parentsOfRule(outMap: Map[String, ArrayBuffer[(ArrayBuffer[RDFTriple], RuleContainer)]], spark: SparkSession): ArrayBuffer[RuleContainer] = {
       // TODO: create new rules with body in alphabetical order     
       var parents = ArrayBuffer(this.parent)
       val r = this.sortedRule.clone
@@ -291,7 +290,7 @@ object Rules {
 
           tp = r.clone()
           tp.remove(l)
-          var x = partParents(tp, filtered, sc)
+          var x = partParents(tp, filtered, spark)
           parents ++= x._1
           filtered = x._2
         }
@@ -393,7 +392,7 @@ object Rules {
       return this.variableList
     }
 
-    def partParents(triples: ArrayBuffer[RDFTriple], arbuf: ArrayBuffer[(ArrayBuffer[RDFTriple], RuleContainer)], sc: SparkContext): (ArrayBuffer[RuleContainer], ArrayBuffer[(ArrayBuffer[RDFTriple], RuleContainer)]) = {
+    def partParents(triples: ArrayBuffer[RDFTriple], arbuf: ArrayBuffer[(ArrayBuffer[RDFTriple], RuleContainer)], spark: SparkSession): (ArrayBuffer[RuleContainer], ArrayBuffer[(ArrayBuffer[RDFTriple], RuleContainer)]) = {
       var out1: ArrayBuffer[RuleContainer] = new ArrayBuffer
       var out2: ArrayBuffer[(ArrayBuffer[RDFTriple], RuleContainer)] = new ArrayBuffer
 
