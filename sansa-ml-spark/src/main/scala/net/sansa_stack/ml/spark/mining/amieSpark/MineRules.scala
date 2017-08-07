@@ -88,12 +88,12 @@ object MineRules {
       return out
     }
 
-    def ruleMining(spark:SparkSession): ArrayBuffer[RuleContainer] = {
+    def ruleMining(spark: SparkSession): ArrayBuffer[RuleContainer] = {
 
       var predicates = kb.getKbGraph().triples.map { x => x.predicate
 
       }.distinct
-      var z = predicates.collect()
+      //   var z = predicates.collect()
 
       /**
        * q is a queue with one atom rules
@@ -101,7 +101,7 @@ object MineRules {
        */
       var q = ArrayBuffer[RuleContainer]()
 
-      for (zz <- z) {
+      /*for (zz <- z) {
         if (zz != null) {
           var rule = ArrayBuffer(RDFTriple("?a", zz, "?b"))
 
@@ -111,6 +111,13 @@ object MineRules {
           q += rc
         }
 
+      }*/
+
+      predicates.flatMap { p =>
+        var rule = ArrayBuffer(RDFTriple("?a", p, "?b"))
+        var rc = new RuleContainer
+        rc.initRule(rule, kb, spark)
+        q += rc
       }
 
       var outMap: Map[String, ArrayBuffer[(ArrayBuffer[RDFTriple], RuleContainer)]] = Map()
@@ -215,7 +222,7 @@ object MineRules {
      *
      */
 
-    def refine(c: Int, id: Int, r: RuleContainer, dataFrameRuleParts: RDD[(RDFTriple, Int, Int)], spark:SparkSession): RDD[(RDFTriple, Int, Int)] = {
+    def refine(c: Int, id: Int, r: RuleContainer, dataFrameRuleParts: RDD[(RDFTriple, Int, Int)], spark: SparkSession): RDD[(RDFTriple, Int, Int)] = {
 
       var out: DataFrame = null
       var OUT: RDD[(RDFTriple, Int, Int)] = dataFrameRuleParts
@@ -292,7 +299,7 @@ object MineRules {
      * @param minConf min. confidence
      *
      */
-    def acceptedForOutput(outMap: Map[String, ArrayBuffer[(ArrayBuffer[RDFTriple], RuleContainer)]], r: RuleContainer, minConf: Double, k: KB, spark:SparkSession): Boolean = {
+    def acceptedForOutput(outMap: Map[String, ArrayBuffer[(ArrayBuffer[RDFTriple], RuleContainer)]], r: RuleContainer, minConf: Double, k: KB, spark: SparkSession): Boolean = {
 
       //if ((!(r.closed())) || (r.getPcaConfidence(k, sc, sqlContext) < minConf)) {
       if ((!(r.closed())) || (r.getPcaConfidence() < minConf)) {
@@ -351,7 +358,6 @@ object MineRules {
     val input = args(0)
     val outputPath: String = args(1)
     val hdfsPath: String = outputPath + "/"
-
 
     know.sethdfsPath(hdfsPath)
     know.setKbSrc(input)
