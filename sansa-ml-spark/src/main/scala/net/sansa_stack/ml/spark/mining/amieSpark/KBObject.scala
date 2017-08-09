@@ -457,116 +457,7 @@ object KBObject {
 
     //TODO: better than cardinality
 
-    def bindingExists(triplesCard: ArrayBuffer[RDFTriple]): Boolean = {
-      val k = this.kbGraph
-      if (triplesCard.isEmpty) {
-        return true
-      }
-      if (triplesCard.length == 1) {
-        var last = triplesCard(0)
-        if (last.subject.startsWith("?")) {
-          return (k.find(None, Some(last.predicate), Some(last.`object`)).collect.length) > 0
-        } else if (triplesCard(0).`object`.startsWith("?")) {
-          return (k.find(Some(last.subject), Some(last.predicate), None).collect.length) > 0
-        } else {
-          return false
-        }
-      }
-
-      var mapList: ArrayBuffer[Map[String, String]] = new ArrayBuffer
-
-      var min: RDFTriple = triplesCard(0)
-      var minSize = this.relationSize.get(triplesCard(0).predicate).get
-      var index = 0
-
-      for (i <- 1 to triplesCard.length - 1) {
-        if (this.relationSize.get(triplesCard(i).predicate).get < minSize) {
-          minSize = this.relationSize.get(triplesCard(i).predicate).get
-          min = triplesCard(i)
-          index = i
-
-        }
-      }
-
-      var a = min._1
-      var b = min._3
-
-      var x: Array[RDFTriple] = Array()
-
-      if (!(a.startsWith("?"))) {
-        x = k.find(Some(a), Some(min.predicate), None).collect
-      } else if (!(b.startsWith("?"))) {
-        x = k.find(None, Some(min.predicate), Some(b)).collect
-      } else {
-        x = k.find(None, Some(min.predicate), None).collect
-      }
-
-      //x.foreach(println)
-      triplesCard.remove(index)
-
-      for (i <- x) {
-        var temp: ArrayBuffer[RDFTriple] = new ArrayBuffer
-        var exploreFurther = true
-        for (j <- triplesCard) {
-
-          var test = true
-          var atestLeft = (this.predicate2subject2object.get(j._2).get.get(i._1).isEmpty)
-          var atestRight = (this.predicate2object2subject.get(j._2).get.get(i._1).isEmpty)
-
-          var btestRight = (this.predicate2object2subject.get(j._2).get.get(i._3).isEmpty)
-          var btestLeft = (this.predicate2subject2object.get(j._2).get.get(i._3).isEmpty)
-
-          if (((a.startsWith("?") && (b.startsWith("?")))) &&
-            (((j._1 == a) && (j._3 == b) && (!(atestLeft)) && (!(btestRight))) ||
-              ((j._1 == b) && (j._3 == a) && (!(atestRight)) && (!(btestLeft))))) {
-            test = false
-
-          }
-
-          if ((!(j._1.startsWith("?"))) && (!(j._3.startsWith("?")))) {
-            test = false
-
-          }
-
-          if (test) {
-
-            if ((a.startsWith("?")) && ((j._1 == a) && (!(atestLeft)))) {
-              temp += new RDFTriple(i._1, j._2, j._3)
-
-            } else if ((a.startsWith("?")) && ((j._3 == a) && (!(atestRight)))) {
-              temp += new RDFTriple(j._1, j._2, i._1)
-
-            } else if ((b.startsWith("?")) && ((j._3 == b) && (!(btestRight)))) {
-              temp += new RDFTriple(j._1, j._2, i._3)
-
-            } else if ((b.startsWith("?")) && ((j._1 == b) && (!(btestLeft)))) {
-              temp += new RDFTriple(i._3, j._2, j._3)
-            } else if ((b.startsWith("?")) && (((j._3 == b) && (btestRight)) || ((j._1 == b) && (btestLeft)))) {
-              exploreFurther = false
-            } else if ((a.startsWith("?")) && (((j._1 == a) && (atestLeft)) || ((j._3 == a) && (atestRight)))) {
-              exploreFurther = false
-            } else {
-
-              temp += j
-
-            }
-
-          }
-
-        }
-
-        if (exploreFurther) {
-          if (bindingExists(temp)) {
-
-            return true
-
-          }
-        }
-
-      }
-
-      return false
-    }
+    
 
     def varCount(tpAr: ArrayBuffer[RDFTriple]): ArrayBuffer[Tuple2[String, String]] = {
 
@@ -629,7 +520,7 @@ object KBObject {
               }
             }
 
-            if ((this.bindingExists(temp.clone())) && (go)) {
+            if (go) {
 
               var part = this.cardinalityQueries(id, tpArDF, temp, spark)
 
