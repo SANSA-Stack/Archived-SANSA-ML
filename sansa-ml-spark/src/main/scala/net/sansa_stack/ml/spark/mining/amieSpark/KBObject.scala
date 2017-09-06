@@ -8,13 +8,31 @@ import scala.collection.mutable.{ ArrayBuffer, Map }
 //import net.sansa_stack.ml.spark.dissect.inference.utils._
 
 import java.io.File
-
-import net.sansa_stack.ml.spark.mining.amieSpark.Rules.RuleContainer
+import net.sansa_stack.ml.spark.mining.amieSpark.MineRules.RuleContainer
+//import net.sansa_stack.ml.spark.mining.amieSpark.Rules.RuleContainer
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.functions.udf
+import org.apache.spark.sql.SparkSession
 
 object KBObject {
   case class Atom(rdf: RDFTriple)
+  /* 
+  case class RuleContainer (
+      support: Option[Long], 
+      parent: Option[RuleContainer], 
+      rule: Option[ArrayBuffer[RDFTriple]], 
+      sortedRule: Option[ArrayBuffer[RDFTriple]],
+      bodySize: Option[Long],
+      
+      pcaBodySize: Option[Double], //0.0;
+      pcaConfidence: Option[Double], //0.0;
+      ancestors: Option[ArrayBuffer[(String, String, String)]],
+      
+      
+      sizeHead: Option[Int]
+      )
+*/
+  
   class KB() extends Serializable {
     var kbSrc: String = ""
 
@@ -456,116 +474,7 @@ object KBObject {
 
     //TODO: better than cardinality
 
-    def bindingExists(triplesCard: ArrayBuffer[RDFTriple]): Boolean = {
-      val k = this.kbGraph
-      if (triplesCard.isEmpty) {
-        return true
-      }
-      if (triplesCard.length == 1) {
-        var last = triplesCard(0)
-        if (last.subject.startsWith("?")) {
-          return (k.find(None, Some(last.predicate), Some(last.`object`)).collect.length) > 0
-        } else if (triplesCard(0).`object`.startsWith("?")) {
-          return (k.find(Some(last.subject), Some(last.predicate), None).collect.length) > 0
-        } else {
-          return false
-        }
-      }
-
-      var mapList: ArrayBuffer[Map[String, String]] = new ArrayBuffer
-
-      var min: RDFTriple = triplesCard(0)
-      var minSize = this.relationSize.get(triplesCard(0).predicate).get
-      var index = 0
-
-      for (i <- 1 to triplesCard.length - 1) {
-        if (this.relationSize.get(triplesCard(i).predicate).get < minSize) {
-          minSize = this.relationSize.get(triplesCard(i).predicate).get
-          min = triplesCard(i)
-          index = i
-
-        }
-      }
-
-      var a = min._1
-      var b = min._3
-
-      var x: Array[RDFTriple] = Array()
-
-      if (!(a.startsWith("?"))) {
-        x = k.find(Some(a), Some(min.predicate), None).collect
-      } else if (!(b.startsWith("?"))) {
-        x = k.find(None, Some(min.predicate), Some(b)).collect
-      } else {
-        x = k.find(None, Some(min.predicate), None).collect
-      }
-
-      //x.foreach(println)
-      triplesCard.remove(index)
-
-      for (i <- x) {
-        var temp: ArrayBuffer[RDFTriple] = new ArrayBuffer
-        var exploreFurther = true
-        for (j <- triplesCard) {
-
-          var test = true
-          var atestLeft = (this.predicate2subject2object.get(j._2).get.get(i._1).isEmpty)
-          var atestRight = (this.predicate2object2subject.get(j._2).get.get(i._1).isEmpty)
-
-          var btestRight = (this.predicate2object2subject.get(j._2).get.get(i._3).isEmpty)
-          var btestLeft = (this.predicate2subject2object.get(j._2).get.get(i._3).isEmpty)
-
-          if (((a.startsWith("?") && (b.startsWith("?")))) &&
-            (((j._1 == a) && (j._3 == b) && (!(atestLeft)) && (!(btestRight))) ||
-              ((j._1 == b) && (j._3 == a) && (!(atestRight)) && (!(btestLeft))))) {
-            test = false
-
-          }
-
-          if ((!(j._1.startsWith("?"))) && (!(j._3.startsWith("?")))) {
-            test = false
-
-          }
-
-          if (test) {
-
-            if ((a.startsWith("?")) && ((j._1 == a) && (!(atestLeft)))) {
-              temp += new RDFTriple(i._1, j._2, j._3)
-
-            } else if ((a.startsWith("?")) && ((j._3 == a) && (!(atestRight)))) {
-              temp += new RDFTriple(j._1, j._2, i._1)
-
-            } else if ((b.startsWith("?")) && ((j._3 == b) && (!(btestRight)))) {
-              temp += new RDFTriple(j._1, j._2, i._3)
-
-            } else if ((b.startsWith("?")) && ((j._1 == b) && (!(btestLeft)))) {
-              temp += new RDFTriple(i._3, j._2, j._3)
-            } else if ((b.startsWith("?")) && (((j._3 == b) && (btestRight)) || ((j._1 == b) && (btestLeft)))) {
-              exploreFurther = false
-            } else if ((a.startsWith("?")) && (((j._1 == a) && (atestLeft)) || ((j._3 == a) && (atestRight)))) {
-              exploreFurther = false
-            } else {
-
-              temp += j
-
-            }
-
-          }
-
-        }
-
-        if (exploreFurther) {
-          if (bindingExists(temp)) {
-
-            return true
-
-          }
-        }
-
-      }
-
-      return false
-    }
+    
 
     def varCount(tpAr: ArrayBuffer[RDFTriple]): ArrayBuffer[Tuple2[String, String]] = {
 
@@ -584,7 +493,7 @@ object KBObject {
 
       return out2
     }
-    def countProjectionQueriesDF(posit: Int, id: Int, operator: String, minHC: Double, tpAr: ArrayBuffer[RDFTriple], RXY: ArrayBuffer[Tuple2[String, String]], sc: SparkContext, sqlContext: SQLContext): DataFrame =
+    def countProjectionQueriesDF(posit: Int, id: Int, operator: String, minHC: Double, tpAr: ArrayBuffer[RDFTriple], RXY: ArrayBuffer[Tuple2[String, String]], spark:SparkSession): DataFrame =
       {
 
         val threshold = minHC * this.relationSize.get(tpAr(0).predicate).get
@@ -601,7 +510,7 @@ object KBObject {
 
           DF.registerTempTable("table")
 
-          tpArDF = sqlContext.sql("SELECT rdf AS tp0 FROM table WHERE rdf.predicate = '" + tpAr(0).predicate + "'")
+          tpArDF = spark.sql("SELECT rdf AS tp0 FROM table WHERE rdf.predicate = '" + tpAr(0).predicate + "'")
 
         } else {
 
@@ -628,9 +537,9 @@ object KBObject {
               }
             }
 
-            if ((this.bindingExists(temp.clone())) && (go)) {
+            if (go) {
 
-              var part = this.cardinalityQueries(id, tpArDF, temp, sc, sqlContext)
+              var part = this.cardinalityQueries(id, tpArDF, temp, spark)
 
               if (whole == null) {
                 whole = part
@@ -647,16 +556,16 @@ object KBObject {
 
       }
 
-    def cardinalityQueries(id: Int, tpArDF: DataFrame, wholeAr: ArrayBuffer[RDFTriple], sc: SparkContext, sqlContext: SQLContext): DataFrame = {
+    def cardinalityQueries(id: Int, tpArDF: DataFrame, wholeAr: ArrayBuffer[RDFTriple], spark:SparkSession): DataFrame = {
       val DF = this.dfTable
       var tpMap: Map[String, ArrayBuffer[Tuple2[Int, String]]] = Map()
       DF.registerTempTable("table")
       tpArDF.registerTempTable("tpArTable")
 
-      var w = sqlContext.sql("SELECT rdf AS tp" + (wholeAr.length - 1) + " FROM table WHERE rdf.predicate = '" + (wholeAr.last).predicate + "'")
+      var w = spark.sql("SELECT rdf AS tp" + (wholeAr.length - 1) + " FROM table WHERE rdf.predicate = '" + (wholeAr.last).predicate + "'")
       w.registerTempTable("newColumn")
 
-      var v = sqlContext.sql("SELECT * FROM tpArTable JOIN newColumn")
+      var v = spark.sql("SELECT * FROM tpArTable JOIN newColumn")
 
       var varAr: ArrayBuffer[String] = new ArrayBuffer
       var checkMap: Map[Int, Tuple2[String, String]] = Map()
@@ -733,17 +642,17 @@ object KBObject {
 
       checkSQLWHERE = checkSQLWHERE.stripSuffix(" AND ")
       var seq: Seq[String] = Seq((wholeAr.last.toString() + "  " + id.toString()))
-      import sqlContext.implicits._
+      import spark.implicits._
       var key: DataFrame = seq.toDF("key")
 
       v.registerTempTable("t")
-      var last = sqlContext.sql(checkSQLSELECT + " FROM t " + checkSQLWHERE)
+      var last = spark.sql(checkSQLSELECT + " FROM t " + checkSQLWHERE)
 
       this.setDfMap(calcName(wholeAr), last)
 
       last.registerTempTable("lastTable")
       key.registerTempTable("keyTable")
-      var out = sqlContext.sql(checkSQLSELECT + ", keyTable.key FROM lastTable JOIN keyTable")
+      var out = spark.sql(checkSQLSELECT + ", keyTable.key FROM lastTable JOIN keyTable")
 
       return out
 
@@ -753,7 +662,7 @@ object KBObject {
      * used in setBodySize and calcSupport
      */
 
-    def cardinality(tpAr: ArrayBuffer[RDFTriple], sc: SparkContext, sqlContext: SQLContext): DataFrame = {
+    def cardinality(tpAr: ArrayBuffer[RDFTriple], spark:SparkSession): DataFrame = {
       var name = calcName(tpAr)
 
       if (dfMap.contains(name)) {
@@ -763,10 +672,10 @@ object KBObject {
         var tpMap: Map[String, ArrayBuffer[Tuple2[Int, String]]] = Map()
         DF.registerTempTable("table")
 
-        var v = sqlContext.sql("SELECT rdf AS tp0 FROM table WHERE rdf.predicate = '" + tpAr(0).predicate + "'")
+        var v = spark.sql("SELECT rdf AS tp0 FROM table WHERE rdf.predicate = '" + tpAr(0).predicate + "'")
 
         for (k <- 1 to tpAr.length - 1) {
-          var w = sqlContext.sql("SELECT rdf AS tp" + k + " FROM table WHERE rdf.predicate = '" + tpAr(k).predicate + "'")
+          var w = spark.sql("SELECT rdf AS tp" + k + " FROM table WHERE rdf.predicate = '" + tpAr(k).predicate + "'")
           w.registerTempTable("newColumn")
 
           var tempO = v
@@ -777,7 +686,7 @@ object KBObject {
             sqlString += "previous.tp" + re + ", "
           }
 
-          v = sqlContext.sql("SELECT " + sqlString + "newColumn.tp" + k + " FROM previous JOIN newColumn")
+          v = spark.sql("SELECT " + sqlString + "newColumn.tp" + k + " FROM previous JOIN newColumn")
 
         }
 
@@ -856,13 +765,13 @@ object KBObject {
 
         checkSQLWHERE = checkSQLWHERE.stripSuffix(" AND ")
         v.registerTempTable("t")
-        var out = sqlContext.sql(checkSQLSELECT + " FROM t " + checkSQLWHERE)
+        var out = spark.sql(checkSQLSELECT + " FROM t " + checkSQLWHERE)
         return out
       }
 
     }
 
-    def cardPlusnegativeExamplesLength(tpAr: ArrayBuffer[RDFTriple], support: Double, sc: SparkContext, sqlContext: SQLContext): Double = {
+    def cardPlusnegativeExamplesLength(tpAr: ArrayBuffer[RDFTriple], support: Double, spark:SparkSession): Double = {
       this.dfTable.registerTempTable("kbTable")
 
       // var card = cardinality(tpAr, sc, sqlContext)
@@ -885,13 +794,13 @@ object KBObject {
 
         card.registerTempTable("cardTable")
 
-        var h = sqlContext.sql("SELECT DISTINCT tp0.subject AS sub FROM cardTable")
+        var h = spark.sql("SELECT DISTINCT tp0.subject AS sub FROM cardTable")
 
         var out: DataFrame = null
 
         if (tpAr.length > 2) {
 
-          out = negatveExampleBuilder(h, tpAr, sc, sqlContext)
+          out = negatveExampleBuilder(h, tpAr, spark)
         } else {
           var abString = ""
           if (tpAr(1)._1 == "?a") {
@@ -900,10 +809,10 @@ object KBObject {
             abString = "`object`"
           }
 
-          var o = sqlContext.sql("SELECT rdf AS tp0 FROM kbTable WHERE rdf.predicate='" + (tpAr(1)).predicate + "'")
+          var o = spark.sql("SELECT rdf AS tp0 FROM kbTable WHERE rdf.predicate='" + (tpAr(1)).predicate + "'")
           o.registerTempTable("twoLengthT")
           h.registerTempTable("subjects")
-          out = sqlContext.sql("SELECT twoLengthT.tp0 FROM twoLengthT JOIN subjects ON twoLengthT.tp0." + abString + "=subjects.sub")
+          out = spark.sql("SELECT twoLengthT.tp0 FROM twoLengthT JOIN subjects ON twoLengthT.tp0." + abString + "=subjects.sub")
 
           /*
 	   if ((tpAr(0).predicate == "directed")&&(tpAr(1).predicate== "produced")&&(tpAr(1).subject== "?a")&&(tpAr(1)._3== "?b")){
@@ -922,21 +831,21 @@ object KBObject {
 
     }
 
-    def negatveExampleBuilder(subjects: DataFrame, wholeAr: ArrayBuffer[RDFTriple], sc: SparkContext, sqlContext: SQLContext): DataFrame = {
+    def negatveExampleBuilder(subjects: DataFrame, wholeAr: ArrayBuffer[RDFTriple], spark:SparkSession): DataFrame = {
       val DF = this.dfTable
       var tpMap: Map[String, ArrayBuffer[Tuple2[Int, String]]] = Map()
       DF.registerTempTable("table")
       var wholeTPARBackup = wholeAr.clone()
       wholeAr.remove(0)
 
-      var complete = sqlContext.sql("SELECT rdf AS tp" + 0 + " FROM table WHERE rdf.predicate = '" + (wholeAr(0)).predicate + "'")
+      var complete = spark.sql("SELECT rdf AS tp" + 0 + " FROM table WHERE rdf.predicate = '" + (wholeAr(0)).predicate + "'")
 
       for (i <- 1 to wholeAr.length - 1) {
-        var w = sqlContext.sql("SELECT rdf AS tp" + i + " FROM table WHERE rdf.predicate = '" + (wholeAr(i)).predicate + "'")
+        var w = spark.sql("SELECT rdf AS tp" + i + " FROM table WHERE rdf.predicate = '" + (wholeAr(i)).predicate + "'")
         w.registerTempTable("newColumn")
 
         complete.registerTempTable("previousTable")
-        complete = sqlContext.sql("SELECT * FROM previousTable JOIN newColumn")
+        complete = spark.sql("SELECT * FROM previousTable JOIN newColumn")
       }
 
       var varAr: ArrayBuffer[String] = new ArrayBuffer
@@ -1025,19 +934,19 @@ object KBObject {
       checkSQLWHERE = checkSQLWHERE.stripSuffix(" AND ")
 
       complete.registerTempTable("t")
-      var last = sqlContext.sql(checkSQLSELECT + " FROM t " + checkSQLWHERE)
+      var last = spark.sql(checkSQLSELECT + " FROM t " + checkSQLWHERE)
       last.registerTempTable("lastTable")
 
       subjects.registerTempTable("keyTable")
 
-      var out = sqlContext.sql(checkSQLSELECT + " FROM lastTable JOIN keyTable ON lastTable." + abString._2 + "." + abString._1 + "=keyTable.sub")
+      var out = spark.sql(checkSQLSELECT + " FROM lastTable JOIN keyTable ON lastTable." + abString._2 + "." + abString._1 + "=keyTable.sub")
 
       return out
 
     }
 
     //TODO: solve with DataFrames
-    def cardPlusnegativeExamplesLength(triplesCard: ArrayBuffer[RDFTriple], sc: SparkContext): Double = {
+    def cardPlusnegativeExamplesLength(triplesCard: ArrayBuffer[RDFTriple], spark:SparkSession): Double = {
 
       val k = this.kbGraph
 
@@ -1068,7 +977,7 @@ object KBObject {
 
       for (tripleCount <- 1 to triplesCard.length - 1) {
 
-        val rdd1 = sc.parallelize(mapList.toSeq)
+        val rdd1 = spark.sparkContext.parallelize(mapList.toSeq)
         val rdd2 = arbuf(tripleCount)
         val comb = rdd1.cartesian(rdd2) // cartesian() to get every possible combination
 
@@ -1106,9 +1015,9 @@ object KBObject {
         }
 
       }
-      var rightOnes = sc.parallelize(mapList.toSeq).map(y => y.get(triplesCard(0).subject).get).distinct.collect
+      var rightOnes = spark.sparkContext.parallelize(mapList.toSeq).map(y => y.get(triplesCard(0).subject).get).distinct.collect
 
-      var as = sc.parallelize(temp.toSeq).map {
+      var as = spark.sparkContext.parallelize(temp.toSeq).map {
         x =>
           (x.get(triplesCard(0).subject).get, 1)
 
@@ -1125,42 +1034,42 @@ object KBObject {
 
     }
 
-    def addDanglingAtom(c: Int, id: Int, minHC: Double, rule: RuleContainer, sc: SparkContext, sqlContext: SQLContext): DataFrame =
+    def addDanglingAtom(c: Int, id: Int, minHC: Double, rc: RuleContainer, spark:SparkSession): DataFrame =
       {
-        val tpAr = rule.getRule()
+        val tpAr = rc.rule.get
         var RXY: ArrayBuffer[Tuple2[String, String]] = new ArrayBuffer
 
-        val notC = rule.notClosed()
+        val notC = notClosed(rc)// updated Rule
 
-        val variables = rule.getVariableList()
-        val freshVar = "?" + (rule.getHighestVariable() + 1).toChar.toString
+        val variables = notC._3
+        val freshVar = "?" + (notC._2 + 1).toChar.toString
 
-        if (notC.isEmpty) {
+        if (notC._1.isEmpty) {
           for (v <- variables) {
             RXY ++= ArrayBuffer(Tuple2(v, freshVar), Tuple2(freshVar, v))
 
           }
         } else {
-          for (nc <- notC.get) {
+          for (nc <- notC._1) {
             RXY ++= ArrayBuffer(Tuple2(nc, freshVar), Tuple2(freshVar, nc))
           }
         }
 
-        var x = this.countProjectionQueriesDF(c, id, "OD", minHC, tpAr, RXY, sc, sqlContext)
+        var x = this.countProjectionQueriesDF(c, id, "OD", minHC, tpAr, RXY, spark)
 
         return x
       }
 
-    def addClosingAtom(c: Int, id: Int, minHC: Double, rule: RuleContainer, sc: SparkContext, sqlContext: SQLContext): DataFrame =
+    def addClosingAtom(c: Int, id: Int, minHC: Double, rc: RuleContainer, spark:SparkSession): DataFrame =
       {
-        val tpAr = rule.getRule()
+        val tpAr = rc.rule.get
         var RXY: ArrayBuffer[Tuple2[String, String]] = new ArrayBuffer
 
-        val notC = rule.notClosed()
+        val notC = notClosed(rc) // updated Rule
 
-        val variables = rule.getVariableList()
+        val variables = notC._3
 
-        if (notC.isEmpty) {
+        if (notC._1.isEmpty) {
 
           for (v <- variables) {
             for (w <- variables) {
@@ -1171,7 +1080,7 @@ object KBObject {
 
           }
         } else {
-          var notCVars = notC.get
+          var notCVars = notC._1
 
           if (notCVars.length == 1) {
             for (v <- variables) {
@@ -1188,11 +1097,66 @@ object KBObject {
           }
 
         }
-        var x = this.countProjectionQueriesDF(c, id, "OC", minHC, tpAr, RXY, sc, sqlContext)
+        var x = this.countProjectionQueriesDF(c, id, "OC", minHC, tpAr, RXY, spark)
 
         return x
       }
 
+    def notClosed(rc: RuleContainer): (ArrayBuffer[String], Char, ArrayBuffer[String]) = {
+      var maxVar: Char = 'a'
+      var varArBuff = new ArrayBuffer[String]
+
+      var tparr = rc.rule.get
+      var maptp: Map[String, Int] = Map()
+      if (tparr.length == 1) {
+
+        return (ArrayBuffer(tparr(0)._1, tparr(0)._3), 'b', ArrayBuffer("?a", "?b"))
+      }
+
+      for (x <- tparr) {
+
+        if (!(maptp.contains(x._1))) {
+          varArBuff += x._1
+          if (x._1(1) > maxVar) {
+            maxVar = x._1(1)
+          }
+          maptp += (x._1 -> 1)
+        } else {
+
+          maptp.put(x._1, (maptp.get(x._1).get + 1)).get
+        }
+
+        /**checking map for placeholder for the object*/
+        if (!(maptp.contains(x._3))) {
+          varArBuff += x._3
+
+          if (x._3(1) > maxVar) {
+            maxVar = x._3(1)
+          }
+          maptp += (x._3 -> 1)
+        } else {
+          maptp.put(x._3, (maptp.get(x._3).get + 1)).get
+        }
+
+      }
+      var out: ArrayBuffer[String] = new ArrayBuffer
+      
+      maptp.foreach { value => if (value._2 == 1) out += value._1 }
+
+      
+      
+     
+      
+        return (out, maxVar, varArBuff)
+      
+
+    }
+    
+    
+    
+    
+    
+    
   }
 
 }
