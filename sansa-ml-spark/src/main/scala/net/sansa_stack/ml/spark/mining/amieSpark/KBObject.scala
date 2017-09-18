@@ -16,22 +16,7 @@ import org.apache.spark.sql.SparkSession
 
 object KBObject {
   case class Atom(rdf: RDFTriple)
-  /* 
-  case class RuleContainer (
-      support: Option[Long], 
-      parent: Option[RuleContainer], 
-      rule: Option[ArrayBuffer[RDFTriple]], 
-      sortedRule: Option[ArrayBuffer[RDFTriple]],
-      bodySize: Option[Long],
-      
-      pcaBodySize: Option[Double], //0.0;
-      pcaConfidence: Option[Double], //0.0;
-      ancestors: Option[ArrayBuffer[(String, String, String)]],
-      
-      
-      sizeHead: Option[Int]
-      )
-*/
+
   
   class KB() extends Serializable {
     var kbSrc: String = ""
@@ -658,118 +643,7 @@ object KBObject {
 
     }
 
-    /**
-     * used in setBodySize and calcSupport
-     */
-
-    def cardinality(tpAr: ArrayBuffer[RDFTriple], spark:SparkSession): DataFrame = {
-      var name = calcName(tpAr)
-
-      if (dfMap.contains(name)) {
-        return dfMap.get(name).get
-      } else {
-        val DF = this.dfTable
-        var tpMap: Map[String, ArrayBuffer[Tuple2[Int, String]]] = Map()
-        DF.registerTempTable("table")
-
-        var v = spark.sql("SELECT rdf AS tp0 FROM table WHERE rdf.predicate = '" + tpAr(0).predicate + "'")
-
-        for (k <- 1 to tpAr.length - 1) {
-          var w = spark.sql("SELECT rdf AS tp" + k + " FROM table WHERE rdf.predicate = '" + tpAr(k).predicate + "'")
-          w.registerTempTable("newColumn")
-
-          var tempO = v
-          tempO.registerTempTable("previous")
-
-          var sqlString = ""
-          for (re <- 0 to k - 1) {
-            sqlString += "previous.tp" + re + ", "
-          }
-
-          v = spark.sql("SELECT " + sqlString + "newColumn.tp" + k + " FROM previous JOIN newColumn")
-
-        }
-
-        var varAr: ArrayBuffer[String] = new ArrayBuffer
-        var checkMap: Map[Int, Tuple2[String, String]] = Map()
-        var checkSQLSELECT = "SELECT "
-
-        for (i <- 0 to tpAr.length - 1) {
-          var a = tpAr(i).subject
-          var b = tpAr(i)._3
-
-          checkSQLSELECT += "tp" + i + ", "
-
-          varAr ++= ArrayBuffer(a, b)
-          checkMap += (i -> Tuple2(a, b))
-
-          if (!(tpMap.contains(a))) {
-            tpMap += ((a) -> ArrayBuffer(Tuple2(i, "subject")))
-
-          } else {
-            var temp = tpMap.get(a).get
-            temp += Tuple2(i, "subject")
-            tpMap.put(a, temp)
-          }
-          if (!(tpMap.contains(b))) {
-            tpMap += ((b) -> ArrayBuffer(Tuple2(i, "`object`")))
-
-          } else {
-            var temp = tpMap.get(b).get
-            temp += Tuple2(i, "`object`")
-            tpMap.put(b, temp)
-
-          }
-        }
-        checkSQLSELECT = checkSQLSELECT.stripSuffix(", ")
-
-        var cloneTpAr = tpAr.clone()
-
-        var removedMap: Map[String, ArrayBuffer[Tuple2[Int, String]]] = Map()
-
-        varAr = varAr.distinct
-        var checkSQLWHERE = "WHERE "
-        checkMap.foreach { ab =>
-          var a = ab._2._1
-          var b = ab._2._2
-
-          if (varAr.contains(a)) {
-
-            varAr -= a
-            var x = tpMap.get(a).get
-            for (k <- x) {
-              if (k._1 != ab._1) {
-                checkSQLWHERE += "tp" + ab._1 + ".subject = tp" + k._1 + "." + k._2 + " AND "
-
-              }
-
-            }
-
-          }
-
-          if (varAr.contains(b)) {
-
-            varAr -= b
-            var y = tpMap.get(b).get
-
-            for (k <- y) {
-              if (k._1 != ab._1) {
-                checkSQLWHERE += "tp" + ab._1 + ".`object` = tp" + k._1 + "." + k._2 + " AND "
-
-              }
-            }
-
-          }
-
-        }
-
-        checkSQLWHERE = checkSQLWHERE.stripSuffix(" AND ")
-        v.registerTempTable("t")
-        var out = spark.sql(checkSQLSELECT + " FROM t " + checkSQLWHERE)
-        return out
-      }
-
-    }
+    
 
     def cardPlusnegativeExamplesLength(tpAr: ArrayBuffer[RDFTriple], support: Double, spark:SparkSession): Double = {
       this.dfTable.registerTempTable("kbTable")
@@ -814,15 +688,7 @@ object KBObject {
           h.registerTempTable("subjects")
           out = spark.sql("SELECT twoLengthT.tp0 FROM twoLengthT JOIN subjects ON twoLengthT.tp0." + abString + "=subjects.sub")
 
-          /*
-	   if ((tpAr(0).predicate == "directed")&&(tpAr(1).predicate== "produced")&&(tpAr(1).subject== "?a")&&(tpAr(1)._3== "?b")){
-	     h.show(800, false)
-	     
-	     var fjgf = sqlContext.sql("SELECT ")
-	   }
-	   
-	   
-	   */
+  
 
         }
         outCount = out.count()
@@ -945,94 +811,7 @@ object KBObject {
 
     }
 
-    //TODO: solve with DataFrames
-    def cardPlusnegativeExamplesLength(triplesCard: ArrayBuffer[RDFTriple], spark:SparkSession): Double = {
 
-      val k = this.kbGraph
-
-      /**
-       * in every RDD is an Array with facts that are corresponding to the relations in the rule,
-       * the index of triplesCard correspond with the index of arbuf
-       *
-       */
-      var arbuf = new ArrayBuffer[RDD[RDFTriple]]
-
-      var mapList = new ArrayBuffer[Map[String, String]]
-
-      for (i <- triplesCard) {
-
-        var z = i.predicate
-        var x = k.find(None, Some(z), None)
-        arbuf += x
-
-      }
-
-      /**initializing maplist with head of the rule*/
-      for (ii <- arbuf(0).collect()) {
-        mapList += Map(triplesCard(0).subject -> ii._1, triplesCard(0).`object` -> ii._3)
-
-      }
-
-      var temp = mapList.clone()
-
-      for (tripleCount <- 1 to triplesCard.length - 1) {
-
-        val rdd1 = spark.sparkContext.parallelize(mapList.toSeq)
-        val rdd2 = arbuf(tripleCount)
-        val comb = rdd1.cartesian(rdd2) // cartesian() to get every possible combination
-
-        /**
-         * the combinations._1 is always the ArrayBuffer with the maps,
-         * it represents all correctly mapped placeholders to facts to this point.
-         * combinations._2 is the current part of the rule we are mapping
-         *
-         */
-        val combinations = comb.distinct.collect()
-
-        mapList = new ArrayBuffer[Map[String, String]]
-
-        for (i <- combinations) {
-          var ltrip = i._2
-          var elem1 = ltrip._1 //subject from combination
-          var elem2 = ltrip._3
-          var trip1 = triplesCard(tripleCount)._1 // subject from Rule
-          var trip2 = triplesCard(tripleCount)._3
-
-          /**checking map for placeholder for the subject*/
-          if (!(i._1.contains(trip1))) {
-            i._1 += (trip1 -> elem1)
-          }
-
-          /**checking map for placeholder for the object*/
-          if (!(i._1.contains(trip2))) {
-            i._1 += (trip2 -> elem2)
-          }
-
-          if ((i._1.get(trip1) == Some(elem1)) && (i._1.get(trip2) == Some(elem2))) {
-            mapList += i._1
-          }
-
-        }
-
-      }
-      var rightOnes = spark.sparkContext.parallelize(mapList.toSeq).map(y => y.get(triplesCard(0).subject).get).distinct.collect
-
-      var as = spark.sparkContext.parallelize(temp.toSeq).map {
-        x =>
-          (x.get(triplesCard(0).subject).get, 1)
-
-      }.reduceByKey(_ + _).collect
-
-      var out: Double = 0.0
-      for (i <- as) {
-        if (rightOnes.contains(i._1))
-          out += (i._2 - 1)
-
-      }
-
-      return ((mapList.length) + out)
-
-    }
 
     def addDanglingAtom(c: Int, id: Int, minHC: Double, rc: RuleContainer, spark:SparkSession): DataFrame =
       {

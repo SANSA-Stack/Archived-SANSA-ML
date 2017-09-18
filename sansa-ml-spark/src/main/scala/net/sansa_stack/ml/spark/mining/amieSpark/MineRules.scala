@@ -35,7 +35,7 @@ object MineRules {
       parent: Option[RuleContainer], 
       rule: Option[ArrayBuffer[RDFTriple]], 
       sortedRule: Option[ArrayBuffer[RDFTriple]],
-      bodySize: Option[Long],
+     
       
       pcaBodySize: Option[Double], //0.0;
       pcaConfidence: Option[Double], //0.0;
@@ -50,7 +50,7 @@ object MineRules {
           //parent: Option[RuleContainer], 
           //rule: Option[ArrayBuffer[RDFTriple]], 
           //sortedRule: Option[ArrayBuffer[RDFTriple]],
-          //bodySize: Option[Long],
+          
           
           //pcaBodySize: Option[Double], //0.0;
           //pcaConfidence: Option[Double], //0.0;
@@ -186,7 +186,7 @@ object MineRules {
             var parent: RuleContainer = RuleContainer(
                
                 
-                None,
+               
                 None,
                 None,
                 None,
@@ -197,7 +197,7 @@ object MineRules {
                 None)
             var newRuleC: RuleContainer =  RuleContainer(
               
-                None,
+                
                 None,
                 None,
                 None,
@@ -423,8 +423,7 @@ object MineRules {
       def initRule( x: ArrayBuffer[RDFTriple], k: KB, spark: SparkSession): RuleContainer = {
       
 
-      var supp = calcSupport(x ,k, spark)
-      var bodSize = setBodySize(x, k, spark)
+      var supp:Option[Long] = Some(0)
       var hs = setSizeHead(x, k)
       
      return RuleContainer( 
@@ -432,7 +431,7 @@ object MineRules {
          None,
          Some(x), 
          None,
-         bodSize,
+         
          
          None, //pcaBodySize: Option[Double], //0.0;
          None, // pcaConfidence: Option[Double], //0.0;
@@ -467,7 +466,7 @@ object MineRules {
       Some(p),    //parent: Option[RuleContainer], 
       Some(x),    //rule: Option[ArrayBuffer[RDFTriple]], 
       Some(y),   //sortedRule: Option[ArrayBuffer[RDFTriple]],
-      setBodySize(x, k, spark),    //bodySize: Option[Long],
+      
       
       setPcaConfidence(x, supp, threshold, k, spark),    //pcaBodySize: Option[Double], //0.0;
       None,    //pcaConfidence: Option[Double], //0.0;
@@ -482,15 +481,7 @@ object MineRules {
 
     /**returns ArrayBuffer with every triplePattern of the body as a RDFTriple*/
 
-    def hc(rc: RuleContainer): Double = {
-      if (rc.bodySize.get < 1) {
-        return -1.0
 
-      }
-
-      return ((rc.support.get) / (rc.sizeHead.get))
-
-    }
 
     /**
      * returns number of instantiations of the predicate of the head
@@ -509,24 +500,7 @@ object MineRules {
      
     }
 
-    /**
-     * returns number of instantiations of the relations in the body
-     *
-     * @param k knowledge base
-     * @param sc spark context
-     *
-     */
 
-    def setBodySize(rule:ArrayBuffer[RDFTriple], k: KB, spark: SparkSession): Option[Long]= {
-      if ((rule.length - 1) > 1) {
-        var body = rule.clone
-        body.remove(0)
-        var mapList = k.cardinality(body, spark)
-
-       return Some(mapList.count())
-      }
-      return Some(-1)
-    }
 
     /**
      * returns the support of a rule, the number of instantiations of the rule
@@ -536,19 +510,7 @@ object MineRules {
      *
      */
 
-    def calcSupport(rule: ArrayBuffer[RDFTriple], k: KB, spark: SparkSession): Option[Long] = {
 
-      
-      
-      if (rule.length > 1) {
-
-        val mapList = k.cardinality(rule, spark)
-
-        return Some(mapList.count())
-      }
-      return Some(-1)
-    }
-    /**returns the length of the body*/
 
   
 
@@ -638,17 +600,7 @@ object MineRules {
     }
 
    
-/*
-    def setPcaBodySize(k: KB, spark: SparkSession) {
-      val tparr = this.rule
 
-      val out = k.cardPlusnegativeExamplesLength(tparr, spark)
-
-      this.pcaBodySize = out
-
-    }
-    * 
-    */
 
     def pcaConfidenceEstimation(rule: ArrayBuffer[RDFTriple], k: KB): Double = {
       var r = rule.clone
