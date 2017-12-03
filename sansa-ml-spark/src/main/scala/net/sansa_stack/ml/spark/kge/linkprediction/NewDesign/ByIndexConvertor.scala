@@ -5,11 +5,9 @@ import org.apache.spark.sql._
 import org.apache.spark.sql.functions._ 
 
 
-
 class ByIndexConvertor(
     triples : Triples,
     spark : SparkSession) extends ConvertorTrait {
-
 
   // protected
   val entities = triples.getAllDistinctEntities().withColumn("ID", monotonicallyIncreasingId ).persist()
@@ -17,17 +15,6 @@ class ByIndexConvertor(
   // protected
   val predicates = triples.getAllDistinctPredicates().withColumn("ID", monotonicallyIncreasingId ).persist()
   
-  case class NameIndex(name :String, index :Long)
-  
-  
-  
-//  entities.printSchema()
-//  predicates.printSchema()
-//  
-//  entities.take(10).foreach(println)
-//  predicates.take(10).foreach(println)
-  
-
   def getTriplesByIndex(dsTriplesInString : Dataset[RecordStringTriples]) : Dataset[RecordLongTriples] = {
    
     val colNames = dsTriplesInString.columns
@@ -71,11 +58,7 @@ class ByIndexConvertor(
                    .drop("ObjectID","ID")
                    .withColumnRenamed("Entities","Objects")
       
-    result.printSchema()
-    result.show()
     return result.asInstanceOf[Dataset[RecordStringTriples]]
-    
-    return null
   }
   
   def getEntitiesByIndex(dsEntitiesIndices : Dataset[Long]) : Dataset[(String,Long)] = {
