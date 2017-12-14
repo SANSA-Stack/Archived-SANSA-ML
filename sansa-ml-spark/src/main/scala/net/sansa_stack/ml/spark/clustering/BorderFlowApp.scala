@@ -1,14 +1,18 @@
 package net.sansa_stack.ml.spark.clustering
 
+
+
 import scala.reflect.runtime.universe._
 import scopt.OptionParser
 import org.apache.log4j.{ Level, Logger }
 import org.apache.spark.sql.SparkSession
 
 object BorderFlowApp {
-
+    
+    val Input ="hdfs://172.18.160.17:54310/TinaBoroukhian/input/dbpedia.txt"
+    
   case class Params(
-      input: String = "src/main/resources/Cluster/sample1.txt") extends AbstractParams[Params] {
+      input: String = Input) extends AbstractParams[Params] {
   }
   abstract class AbstractParams[T: TypeTag] {
 
@@ -53,7 +57,7 @@ object BorderFlowApp {
   def run(params: Params) {
 
     val spark = SparkSession.builder
-      .master("local[*]")
+      .master("spark://172.18.160.16:3077")
       .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
       .appName(s"BorderFlow with $params")
       .getOrCreate()

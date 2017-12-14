@@ -1,79 +1,86 @@
-package net.sansa_stack.ml.spark.classification
-import net.sansa_stack.owl.spark.rdd.{FunctionalSyntaxOWLAxiomsRDDBuilder, ManchesterSyntaxOWLAxiomsRDDBuilder}
-import net.sansa_stack.owl.spark.rdd.OWLExpressionsRDD
-import org.apache.spark.sql.SparkSession
+package net.sansa_stack.ml.spark.classification 
+
+import java.util.ArrayList
 import scala.reflect.runtime.universe._
+import scala.collection.JavaConverters._
+import org.semanticweb.owlapi.model.OWLClassExpression
+
+import net.sansa_stack.ml.spark.classification.KB.KB
+import net.sansa_stack.ml.spark.classification.TDTClassifiers.TDTClassifiers
+
+import net.sansa_stack.owl.spark.rdd.FunctionalSyntaxOWLAxiomsRDDBuilder
+import net.sansa_stack.owl.spark.rdd.OWLAxiomsRDD
+
 import scopt.OptionParser
-import org.apache.log4j.{ Level, Logger }
+import org.apache.log4j.{Level, Logger}
 import org.apache.spark.sql.SparkSession
+import org.apache.spark.rdd.RDD
 
 object TermDecisionTrees {
-  
- 
-  
-/*
+
+  /*
  * The main file to call Terminological Decision Trees for Classification 
  */
 
-  //var kb: KnowledgeBase = _ 
-  
   def main(args: Array[String]) = {
+
+    val input = "src/main/resources/Classification/trains.owl"
+
+    println("=================================")
+    println("|  Termnological Decision Tree  |")
+    println("=================================")
+
+    val sparkSession = SparkSession.builder
+      .master("local[*]")
+      .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+      .config("spark.kryo.registrator", "net.sansa_stack.ml.spark.classification.Registrator")
+      .appName("Termnological Decision Tree")
+      .getOrCreate()
+   
+    //Call owl axion builder to read the classes and object properties and print
+ 	 		
+    val rdd : OWLAxiomsRDD = FunctionalSyntaxOWLAxiomsRDDBuilder.build(sparkSession.sparkContext, input)
+     
+    val kb: KB = new KB(input, rdd, sparkSession)
+   // var ClassM = new ClassMembership(kb, sparkSession)
+   // val ClassName = TDTInducer.toString()
+    // ClassM.bootstrap(10, ClassName, sparkSession)
+    //val c : TDTInducer = new TDTInducer(kb, kb.Concepts.count().toInt, sparkSession)
     
-    val input ="src/main/resources/Classification/ont_functional.owl"
-
-    val syntax = "fun"
+    var PosExamples = sparkSession.sparkContext.parallelize(Array("http://example.com/foo#east1", 
+        "http://example.com/foo#east2",
+        "http://example.com/foo#east3",
+        "http://example.com/foo#east4",
+        "http://example.com/foo#east5"))
     
-    syntax match {
-      case "fun" =>
-        
-        println(".============================================.")
-        println("| RDD OWL reader example (Functional syntax) |")
-        println("`============================================´")
-
-        val sparkSession = SparkSession.builder
-          .master("local[*]")
-          .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
-          .appName("OWL reader example (" + input + ")(Functional syntax)")
-          .getOrCreate()
-/*
- * Call owl axion builder to read the classes and object properties and print
- */
-       val rdd = FunctionalSyntaxOWLAxiomsRDDBuilder.build(sparkSession.sparkContext, input)
-
-       rdd.take(100).foreach(println(_))
-          
-          
-       
-        sparkSession.stop
-
-      case "manch" =>
-        
-        println(".============================================.")
-        println("| RDD OWL reader example (Manchester syntax) |")
-        println("`============================================´")
-
-        val sparkSession = SparkSession.builder
-          .master("local[*]")
-          .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
-          .appName("OWL reader example (" + input + ")(Manchester syntax)")
-          .getOrCreate()
-
-       //val rdd = ManchesterSyntaxOWLAxiomsRDDBuilder.build(sparkSession.sparkContext, input)
-       //rdd.take(10).foreach(println(_))
-
-        
-          
-     sparkSession.stop
-        
-      case "owl_xml" =>
-        println("Not supported, yet.") 
-      
-      case _ =>
-        println("Invalid syntax type.")
+    var NegExamples = sparkSession.sparkContext.parallelize(Array("http://example.com/foo#west6", 
+        "http://example.com/foo#west7", 
+        "http://example.com/foo#west8", 
+        "http://example.com/foo#west9", 
+        "http://example.com/foo#west10"))
     
+    var UndExamples = sparkSession.sparkContext.parallelize(new ArrayList[String]().asScala)
 
-    }//main
+    val numPos: Double = PosExamples.count
+    val numNeg: Double = NegExamples.count
+    val perPos: Double = numPos / (numPos + numNeg)
+    val perNeg: Double = numNeg / (numPos + numNeg)
+    
+    println("\nLearning problem: \n --------------------\n")
+    println("No. of Positive examples: " + PosExamples.count)
+    println("No. of Negative examples: " + NegExamples.count)
+    println("No. of Undefined examples: " + UndExamples.count)
+    println("\nper Pos: " + perPos)
+    println("per Neg: " + perNeg)
+    
+    val c : TDTClassifiers = new TDTClassifiers (kb, sparkSession)
+    val tree : DLTree = c.induceDLTree(kb.getDataFactory.getOWLThing, PosExamples, NegExamples, UndExamples, 50, perPos, perNeg)
+    
+    val Root: OWLClassExpression = tree.getRoot()
+    println("Root of the tree is: " + Root)
+  
+    sparkSession.stop
+
   }
 
-  
 }
