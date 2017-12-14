@@ -44,6 +44,14 @@
 		<system>GitHub</system>
 		<url>https://github.com/SANSA-Stack/SANSA-ML</url>
 	</issueManagement>
+	
+	<scm>
+		<url>https://github.com/SANSA-Stack/Spark-ML</url>
+		<connection>scm:git:git://github.com/SANSA-Stack/Spark-ML.git</connection>
+		<developerConnection>scm:git:git@github.com:SANSA-Stack/Spark-ML.git</developerConnection>
+		<tag>HEAD</tag>
+	</scm>
+	
 
 	<modules>
 		<module>sansa-ml-common</module>
@@ -79,7 +87,7 @@
 				<artifactId>sansa-rdf-spark-core_${scala.binary.version}</artifactId>
 				<version>${sansa.version}</version>
 			</dependency>
-			
+
 			<!-- SANSA OWL -->
 			<dependency>
 				<groupId>net.sansa-stack</groupId>
@@ -235,9 +243,131 @@
 						<pushRemote>false</pushRemote>
 					</configuration>
 				</plugin>
+
 			</plugins>
 		</pluginManagement>
 	</build>
+
+	<profiles>
+		<!-- the profile used for deployment to Sonatype Maven repository -->
+		<profile>
+			<id>ossrh</id>
+			<distributionManagement>
+				<repository>
+					<id>ossrh</id>
+					<url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
+				</repository>
+			</distributionManagement>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>net.alchim31.maven</groupId>
+						<artifactId>scala-maven-plugin</artifactId>
+						<version>3.2.2</version>
+						<executions>
+							<execution>
+								<goals>
+									<goal>compile</goal>
+									<goal>testCompile</goal>
+								</goals>
+								<configuration>
+									<scalaVersion>${scala.version}</scalaVersion>
+									<recompileMode>incremental</recompileMode>
+									<useZincServer>true</useZincServer>
+									<args>
+										<arg>-unchecked</arg>
+										<arg>-deprecation</arg>
+										<arg>-feature</arg>
+										<arg>-dependencyfile</arg>
+										<arg>${project.build.directory}/.scala_dependencies</arg>
+									</args>
+								</configuration>
+							</execution>
+							<!-- necessary for Scaladoc Jar generation during deployment -->
+							<execution>
+								<id>attach-javadocs</id>
+								<goals>
+									<goal>doc-jar</goal>
+								</goals>
+							</execution>
+						</executions>
+
+					</plugin>
+
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-source-plugin</artifactId>
+						<executions>
+							<execution>
+								<phase>verify</phase>
+								<id>attach-sources</id>
+								<goals>
+									<goal>jar</goal>
+								</goals>
+							</execution>
+						</executions>
+					</plugin>
+
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-javadoc-plugin</artifactId>
+						<executions>
+							<execution>
+								<id>attach-javadocs</id>
+								<goals>
+									<goal>jar</goal>
+								</goals>
+							</execution>
+						</executions>
+					</plugin>
+
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-gpg-plugin</artifactId>
+						<version>1.6</version>
+						<executions>
+							<execution>
+								<id>sign-artifacts</id>
+								<phase>verify</phase>
+								<goals>
+									<goal>sign</goal>
+								</goals>
+								<configuration>
+									<keyname>AKSW</keyname>
+									<passphraseServerId>${gpg.keyname}</passphraseServerId>
+								</configuration>
+							</execution>
+						</executions>
+					</plugin>
+
+					<plugin>
+						<groupId>org.sonatype.plugins</groupId>
+						<artifactId>nexus-staging-maven-plugin</artifactId>
+						<version>1.6.7</version>
+						<extensions>true</extensions>
+						<configuration>
+							<serverId>ossrh</serverId>
+							<nexusUrl>https://oss.sonatype.org/</nexusUrl>
+							<autoReleaseAfterClose>true</autoReleaseAfterClose>
+						</configuration>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+	</profiles>
+
+	<distributionManagement>
+		<repository>
+			<id>maven.aksw.internal</id>
+			<name>AKSW Release Repository</name>
+			<url>http://maven.aksw.org/archiva/repository/internal</url>
+		</repository>
+		<snapshotRepository>
+			<id>maven.aksw.snapshots</id>
+			<name>AKSW Snapshot Repository</name>
+			<url>http://maven.aksw.org/archiva/repository/snapshots</url>
+		</snapshotRepository>
+	</distributionManagement>
 
 	<repositories>
 		<repository>
