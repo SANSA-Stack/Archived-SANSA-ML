@@ -80,5 +80,13 @@ class ByIndexConvertor(
                          
     return result
   }
+  
+  def getEntities() : Dataset[Long] = {
+    entities.select("ID").asInstanceOf[Dataset[Long]]
+  }
+  
+  def getPredicates() : Dataset[Long] = {
+    predicates.select("ID").asInstanceOf[Dataset[Long]]    
+  }
     
 }

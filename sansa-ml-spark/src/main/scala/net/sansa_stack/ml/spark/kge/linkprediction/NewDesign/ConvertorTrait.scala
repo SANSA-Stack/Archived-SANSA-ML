@@ -12,4 +12,9 @@ trait ConvertorTrait {
   def getEntitiesByIndex(dsEntitiesIndices : Dataset[Long]) : Dataset[(String,Long)]
   
   def getPredicatesByIndex(dsPredicatesIndicies : Dataset[Long]) : Dataset[(String,Long)]
+  
+  def getEntities() : Dataset[Long]
+  
+  def getPredicates() : Dataset[Long]
+  
 }

@@ -64,6 +64,11 @@ object runTesting extends App {
 //  r2.show()
 //  
 //  
+  
+  conv.getEntities().sample(false,.9).show()
+  
+  System.exit(0)
+  
   println("\n\n------ TESTING -----")
   
   lazy val smp1 = trp.triples.take(n)
