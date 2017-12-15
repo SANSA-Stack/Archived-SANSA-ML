@@ -7,7 +7,7 @@ import org.apache.spark.sql.functions._
 
 class ByIndexConverter(
     triples : Triples,
-    spark : SparkSession) extends ConvertorTrait {
+    spark : SparkSession) extends ConverterTrait {
 
   import spark.implicits._
   
