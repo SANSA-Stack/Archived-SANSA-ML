@@ -9,11 +9,27 @@ class ByIndexConvertor(
     triples : Triples,
     spark : SparkSession) extends ConvertorTrait {
 
-  // protected
-  val entities = triples.getAllDistinctEntities().withColumn("ID", monotonicallyIncreasingId ).persist()
+  import spark.implicits._
   
-  // protected
-  val predicates = triples.getAllDistinctPredicates().withColumn("ID", monotonicallyIncreasingId ).persist()
+  // The following does not generate consecutive indices !
+  // val entities = triples.getAllDistinctEntities().withColumn("ID", monotonicallyIncreasingId ).persist()
+  
+  protected val entities = {
+    var temp = spark.createDataset[(String,Long)]( triples.getAllDistinctEntities().rdd.zipWithIndex() )
+    val names = temp.columns
+    temp.withColumnRenamed(names(0),"Entities").withColumnRenamed(names(1),"ID")
+  }
+  
+  
+  // The following does not generate consecutive indices !
+  // val predicates = triples.getAllDistinctPredicates().withColumn("ID", monotonicallyIncreasingId ).persist()
+  
+  protected val predicates = {
+    var temp = spark.createDataset[(String,Long)]( triples.getAllDistinctPredicates().rdd.zipWithIndex() )
+    var names = temp.columns
+    temp.withColumnRenamed(names(0),"Predicates").withColumnRenamed(names(1),"ID")
+  }
+  
   
   def getTriplesByIndex(dsTriplesInString : Dataset[RecordStringTriples]) : Dataset[RecordLongTriples] = {
    
@@ -81,10 +97,20 @@ class ByIndexConvertor(
     return result
   }
   
+  /**
+   * The function returns all "entities" in their indexed form (Long)
+   * and indices are consecutive. 
+   * The column name is "ID".
+   */
   def getEntities() : Dataset[Long] = {
     entities.select("ID").asInstanceOf[Dataset[Long]]
   }
   
+   /**
+   * The function returns all "predicates" in their indexed form (Long)
+   * and indices are consecutive. 
+   * The column name is "ID".
+   */
   def getPredicates() : Dataset[Long] = {
     predicates.select("ID").asInstanceOf[Dataset[Long]]    
   }
