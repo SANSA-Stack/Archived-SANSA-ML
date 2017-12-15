@@ -47,7 +47,7 @@ object runTesting extends App {
 //  println("\n \n ----------")
 //  e1.foreach(x=>println(x))
   val n = 10
-  val conv = new ByIndexConvertor(trp,spark)
+  val conv = new ByIndexConverter(trp,spark)
   
 //  val id1 = conv.entities.select("ID").sample(false,0.2).take(n)
 //  val ind1 = id1.map( row => row(0).asInstanceOf[Long]).toSeq.toDS()
@@ -62,13 +62,23 @@ object runTesting extends App {
 //  val r2 = conv.getPredicatesByIndex(ind2).persist()
 //  println(" count = ", r2.count)
 //  r2.show()
-//  
-//  
+
+  val e = conv.getEntities().as[Long].collect
+ 
+
+  println("e.length=",e.length,"  r.min =",e.min, "  r.max =",e.max)
+
   
-  conv.getEntities().sample(false,.9).show()
+  println("\n\n\n",e.min)
+  println(e.max)
+ 
   
+//  for(i <- 1 to 10){
+//     conv.getEntities().sample(false,.01).show()
+//  }
   System.exit(0)
   
+ 
   println("\n\n------ TESTING -----")
   
   lazy val smp1 = trp.triples.take(n)

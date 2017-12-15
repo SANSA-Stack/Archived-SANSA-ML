@@ -16,6 +16,8 @@ class TransE (spark : SparkSession,
   
   def initialize() = {
     
+//    train.mapPartitions(f, encoder)
+    
   }
   
   

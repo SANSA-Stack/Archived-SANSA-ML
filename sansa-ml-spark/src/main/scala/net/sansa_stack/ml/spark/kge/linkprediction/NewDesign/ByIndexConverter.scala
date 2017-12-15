@@ -5,7 +5,7 @@ import org.apache.spark.sql._
 import org.apache.spark.sql.functions._ 
 
 
-class ByIndexConvertor(
+class ByIndexConverter(
     triples : Triples,
     spark : SparkSession) extends ConvertorTrait {
 
