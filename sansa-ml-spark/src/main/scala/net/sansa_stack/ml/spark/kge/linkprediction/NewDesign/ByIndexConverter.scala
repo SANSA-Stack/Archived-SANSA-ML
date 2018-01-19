@@ -5,9 +5,8 @@ import org.apache.spark.sql._
 import org.apache.spark.sql.functions._ 
 
 
-class ByIndexConverter(
-    triples : Triples,
-    spark : SparkSession) extends ConverterTrait {
+class ByIndexConverter( triples : Triples,
+                        spark : SparkSession) extends ConverterTrait {
 
   import spark.implicits._
   
@@ -17,7 +16,7 @@ class ByIndexConverter(
   protected val entities = {
     var temp = spark.createDataset[(String,Long)]( triples.getAllDistinctEntities().rdd.zipWithIndex() )
     val names = temp.columns
-    temp.withColumnRenamed(names(0),"Entities").withColumnRenamed(names(1),"ID")
+    temp.withColumnRenamed(names(0),"Entities").withColumnRenamed(names(1),"ID").persist()
   }
   
   
@@ -27,7 +26,7 @@ class ByIndexConverter(
   protected val predicates = {
     var temp = spark.createDataset[(String,Long)]( triples.getAllDistinctPredicates().rdd.zipWithIndex() )
     var names = temp.columns
-    temp.withColumnRenamed(names(0),"Predicates").withColumnRenamed(names(1),"ID")
+    temp.withColumnRenamed(names(0),"Predicates").withColumnRenamed(names(1),"ID").persist()
   }
   
   
@@ -53,6 +52,31 @@ class ByIndexConverter(
                    
     return result.asInstanceOf[Dataset[RecordLongTriples]]
   }
+  
+  def getTriplesByIndex2(dsTriplesInString : Dataset[RecordStringTriples]) : Dataset[RecordLongTriples] = {
+   
+   val ent = spark.sparkContext.broadcast(
+           entities.collect().map{
+              row => (row.get(0).asInstanceOf[String], row.get(1).asInstanceOf[Long])
+           }.toMap
+           )
+           
+   val pred = spark.sparkContext.broadcast(
+           predicates.collect().map{
+              row => (row.get(0).asInstanceOf[String], row.get(1).asInstanceOf[Long])
+           }.toMap
+           )
+           
+   val result = dsTriplesInString.mapPartitions{
+                 iter => iter.map{
+                             case trp : RecordStringTriples => RecordLongTriples(ent.value.get(trp.Subject).get,
+                                                                                 pred.value.get(trp.Predicate).get,
+                                                                                 ent.value.get(trp.Object).get )
+                 }
+   }
+   
+   return result
+ }
 
   def getTriplesByString(dsTriplesInLong : Dataset[RecordLongTriples]) : Dataset[RecordStringTriples] = {
        
@@ -61,22 +85,37 @@ class ByIndexConverter(
     val pred = colNames(1)
     val obj = colNames(2)
     
-    val result = dsTriplesInLong.withColumnRenamed(sub, "SubjectID")
-                   .withColumnRenamed(pred,"PredicateID")
-                   .withColumnRenamed(obj, "ObjectID")
-                   .join(entities, col("SubjectID") === entities("ID"), "left_outer")
-                   .drop("SubjectID","ID")
-                   .withColumnRenamed("Entities", "Subjects")
-                   .join(predicates, col("PredicateID") === predicates("ID") , "left_outer")
-                   .drop("PredicateID","ID")
-                   .withColumnRenamed("Predicates","Predicates")
-                   .join(entities, col("ObjectID") === entities("ID"), "left_outer")
-                   .drop("ObjectID","ID")
-                   .withColumnRenamed("Entities","Objects")
+//    val result = dsTriplesInLong.withColumnRenamed(sub, "SubjectID")
+//                   .withColumnRenamed(pred,"PredicateID")
+//                   .withColumnRenamed(obj, "ObjectID")
+//                   .join(entities, col("SubjectID") === entities("ID"), "left_outer")
+//                   .drop("SubjectID","ID")
+//                   .withColumnRenamed("Entities", "Subjects")
+//                   .join(predicates, col("PredicateID") === predicates("ID") , "left_outer")
+//                   .drop("PredicateID","ID")
+//                   .withColumnRenamed("Predicates","Predicates")
+//                   .join(entities, col("ObjectID") === entities("ID"), "left_outer")
+//                   .drop("ObjectID","ID")
+//                   .withColumnRenamed("Entities","Objects")
       
-    return result.asInstanceOf[Dataset[RecordStringTriples]]
+      val result = dsTriplesInLong.withColumnRenamed(sub, "SubjectID")
+                 .withColumnRenamed(pred,"PredicateID")
+                 .withColumnRenamed(obj, "ObjectID")
+                 .join(broadcast(entities), col("SubjectID") === entities("ID"), "left_outer")
+                 .drop("SubjectID","ID")
+                 .withColumnRenamed("Entities", "Subjects")
+                 .join(broadcast(predicates), col("PredicateID") === predicates("ID") , "left_outer")
+                 .drop("PredicateID","ID")
+                 .withColumnRenamed("Predicates","Predicates")
+                 .join(broadcast(entities), col("ObjectID") === entities("ID"), "left_outer")
+                 .drop("ObjectID","ID")
+                 .withColumnRenamed("Entities","Objects")
+
+      return result.asInstanceOf[Dataset[RecordStringTriples]]
   }
   
+  
+   
   def getEntitiesByIndex(dsEntitiesIndices : Dataset[Long]) : Dataset[(String,Long)] = {
     
     val colName = dsEntitiesIndices.columns(0)
@@ -114,5 +153,11 @@ class ByIndexConverter(
   def getPredicates() : Dataset[Long] = {
     predicates.select("ID").asInstanceOf[Dataset[Long]]    
   }
+  
+  def getConvertedTriples() : Dataset[RecordLongTriples] = {
+    getTriplesByIndex2(triples.triples)
+  }
     
+
+
 }
