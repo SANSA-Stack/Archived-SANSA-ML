@@ -4,4 +4,4 @@ case class RecordStringTriples(Subject: String, Predicate: String, Object: Strin
 
 case class RecordIntTriples(Subject: Int, Predicate: Int, Object: Int)
 
-case class RecordLongTriples(Subject: Long, Predicate: Long, Object: Long)
+case class RecordLongTriples(Subject: Long, Predicate: Long, Object: Long) 

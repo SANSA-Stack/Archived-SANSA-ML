@@ -76,7 +76,7 @@ object runTesting extends App {
 //  for(i <- 1 to 10){
 //     conv.getEntities().sample(false,.01).show()
 //  }
-  System.exit(0)
+//  System.exit(0)
   
  
   println("\n\n------ TESTING -----")

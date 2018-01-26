@@ -14,9 +14,9 @@ import scala.collection.Seq
 import scala.reflect.api.materializeTypeTag
 
 
-class Triples ( name: String, 
-		filePathTriples : String,
-		spark : SparkSession) {
+class Triples ( name: String,
+                filePathTriples : String,
+                spark : SparkSession) {
 
 
 	import spark.implicits._  // to be able to work with """spark.sql("blah blah").as[String].rdd"""
@@ -55,10 +55,18 @@ class Triples ( name: String,
 	  return query.withColumnRenamed(query.columns(0),"Entities").as[String]
 	}
 
+	def getSortedAllDistinctEntities() : Dataset[String] = {
+	  getAllDistinctEntities().sort("Entities")
+	}
+	
 	def getAllDistinctPredicates() : Dataset[String] = {
 
 		val query = triples.select("Predicate").distinct()
 		
 		return query.withColumnRenamed(query.columns(0),"Predicates").as[String]
+	}
+	
+	def getSortedAllDistinctPredicates() : Dataset[String] = {
+	  getAllDistinctPredicates().sort("Predicates")
 	}
 }

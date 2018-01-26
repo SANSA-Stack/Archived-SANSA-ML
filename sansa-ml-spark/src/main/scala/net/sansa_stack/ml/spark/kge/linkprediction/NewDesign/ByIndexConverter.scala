@@ -30,7 +30,7 @@ class ByIndexConverter( triples : Triples,
   }
   
   
-  def getTriplesByIndex(dsTriplesInString : Dataset[RecordStringTriples]) : Dataset[RecordLongTriples] = {
+  def getTriplesByIndexOld(dsTriplesInString : Dataset[RecordStringTriples]) : Dataset[RecordLongTriples] = {
    
     val colNames = dsTriplesInString.columns
     val sub = colNames(0)
@@ -53,15 +53,15 @@ class ByIndexConverter( triples : Triples,
     return result.asInstanceOf[Dataset[RecordLongTriples]]
   }
   
-  def getTriplesByIndex2(dsTriplesInString : Dataset[RecordStringTriples]) : Dataset[RecordLongTriples] = {
+  def getTriplesByIndex(dsTriplesInString : Dataset[RecordStringTriples]) : Dataset[RecordLongTriples] = {
    
-   val ent = spark.sparkContext.broadcast(
+   val entitiesMap = spark.sparkContext.broadcast(
            entities.collect().map{
               row => (row.get(0).asInstanceOf[String], row.get(1).asInstanceOf[Long])
            }.toMap
            )
            
-   val pred = spark.sparkContext.broadcast(
+   val predicatesMap = spark.sparkContext.broadcast(
            predicates.collect().map{
               row => (row.get(0).asInstanceOf[String], row.get(1).asInstanceOf[Long])
            }.toMap
@@ -69,16 +69,16 @@ class ByIndexConverter( triples : Triples,
            
    val result = dsTriplesInString.mapPartitions{
                  iter => iter.map{
-                             case trp : RecordStringTriples => RecordLongTriples(ent.value.get(trp.Subject).get,
-                                                                                 pred.value.get(trp.Predicate).get,
-                                                                                 ent.value.get(trp.Object).get )
+                             case trp : RecordStringTriples => RecordLongTriples(entitiesMap.value.get(trp.Subject).get,
+                                                                                 predicatesMap.value.get(trp.Predicate).get,
+                                                                                 entitiesMap.value.get(trp.Object).get )
                  }
    }
    
    return result
  }
 
-  def getTriplesByString(dsTriplesInLong : Dataset[RecordLongTriples]) : Dataset[RecordStringTriples] = {
+  def getTriplesByStringOld(dsTriplesInLong : Dataset[RecordLongTriples]) : Dataset[RecordStringTriples] = {
        
     val colNames = dsTriplesInLong.columns
     val sub = colNames(0)
@@ -114,7 +114,30 @@ class ByIndexConverter( triples : Triples,
       return result.asInstanceOf[Dataset[RecordStringTriples]]
   }
   
-  
+  def getTriplesByString(dsTriplesInLong : Dataset[RecordLongTriples]) : Dataset[RecordStringTriples] = {
+
+		 val entitiesMap = spark.sparkContext.broadcast(
+           entities.collect().map{
+              row => (row.get(0).asInstanceOf[String], row.get(1).asInstanceOf[Long]).swap // swapping the order
+           }.toMap
+           )
+           
+		 val predicatesMap = spark.sparkContext.broadcast(
+           predicates.collect().map{
+              row => (row.get(0).asInstanceOf[String], row.get(1).asInstanceOf[Long]).swap // swaping the order
+           }.toMap
+           )
+           
+     val result = dsTriplesInLong.mapPartitions{
+                 iter => iter.map{
+                             case trp : RecordLongTriples => RecordStringTriples(entitiesMap.value.get(trp.Subject).get,
+                                                                                 predicatesMap.value.get(trp.Predicate).get,
+                                                                                 entitiesMap.value.get(trp.Object).get )
+                 }
+     }
+		 
+    return result
+  }
    
   def getEntitiesByIndex(dsEntitiesIndices : Dataset[Long]) : Dataset[(String,Long)] = {
     
@@ -155,7 +178,7 @@ class ByIndexConverter( triples : Triples,
   }
   
   def getConvertedTriples() : Dataset[RecordLongTriples] = {
-    getTriplesByIndex2(triples.triples)
+    getTriplesByIndex(triples.triples)
   }
     
 
