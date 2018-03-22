@@ -93,6 +93,10 @@ object playingSerialization2 {
 			myclassDS2.rdd
 			          .collect()
 			          .foreach(println)
+			          
+			// test one new tensor
+			println(myclassDS2.take(3).last.getTen());
+
 			
 			println("<< DONE >>")
 

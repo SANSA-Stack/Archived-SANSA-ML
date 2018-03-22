@@ -54,7 +54,7 @@ object playingSerialization {
 			rdd.map(x => x.toString()).collect().foreach(println)
 			println(rdd.getNumPartitions)
 
-			val enc = Encoders.bean[SerTest](classOf[SerTest])
+			// val enc = Encoders.bean[SerTest](classOf[SerTest])
 
 			//  val ds = spark.createDataset(rdd , enc)
 
@@ -75,9 +75,9 @@ object playingSerialization {
 			val t=Tensor(2,3).fill(1)+100
 			println(t)
 			
-			val x = new SerTest(1234)
-		
-			println(x.ten)
+//			val x = new SerTest(1234)
+//		
+//			println(x.ten)
 			
 			
 			//  val rdd2 = spark.sparkContext.parallelize(
@@ -85,10 +85,14 @@ object playingSerialization {
 			//      4)
 			//  val ds2 = rdd2.toDS()
 			//  ds2.show()
-			//  
-			rdd2.map(s => s.ten = s.ten + 1000 )
-			rdd2.map{s => s.ten}.collect().foreach(println)
-
+			
+			rdd2.map{case s => s.ten = s.ten + 1000 }
+		  rdd2.map{s => s.ten}.collect().foreach(println)  
+			  
+			//val ds3 = ds2.map{case s:SerTest => s.ten = s.ten + 1000 }.asInstanceOf[Dataset[SerTest]]
+					
+      //ds3.map{s => s.ten}.collect().foreach(println)
+			
 			println("<< DONE >>")
 
 	}

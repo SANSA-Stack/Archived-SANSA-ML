@@ -14,4 +14,8 @@ object MyUtility {
     result
 	}
 
+	def exit = {
+	  println(f"\nExiting(0) ...")
+	  System.exit(0);
+	}
 }

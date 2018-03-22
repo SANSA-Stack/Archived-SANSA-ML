@@ -13,7 +13,8 @@ class ByIndexConverter( triples : Triples,
   // The following does not generate consecutive indices !
   // val entities = triples.getAllDistinctEntities().withColumn("ID", monotonicallyIncreasingId ).persist()
   
-  protected val entities = {
+  //protected
+  val entities = {
     var temp = spark.createDataset[(String,Long)]( triples.getAllDistinctEntities().rdd.zipWithIndex() )
     val names = temp.columns
     temp.withColumnRenamed(names(0),"Entities").withColumnRenamed(names(1),"ID").persist()
@@ -22,8 +23,9 @@ class ByIndexConverter( triples : Triples,
   
   // The following does not generate consecutive indices !
   // val predicates = triples.getAllDistinctPredicates().withColumn("ID", monotonicallyIncreasingId ).persist()
-  
-  protected val predicates = {
+
+  //protected
+  val predicates = {
     var temp = spark.createDataset[(String,Long)]( triples.getAllDistinctPredicates().rdd.zipWithIndex() )
     var names = temp.columns
     temp.withColumnRenamed(names(0),"Predicates").withColumnRenamed(names(1),"ID").persist()
@@ -67,13 +69,19 @@ class ByIndexConverter( triples : Triples,
            }.toMap
            )
            
-   val result = dsTriplesInString.mapPartitions{
-                 iter => iter.map{
-                             case trp : RecordStringTriples => RecordLongTriples(entitiesMap.value.get(trp.Subject).get,
+//   val result0 = dsTriplesInString.mapPartitions{
+//                 iter => iter.map{
+//                             case trp : RecordStringTriples => RecordLongTriples(entitiesMap.value.get(trp.Subject).get,
+//                                                                                 predicatesMap.value.get(trp.Predicate).get,
+//                                                                                 entitiesMap.value.get(trp.Object).get )
+//                 }
+//   }
+           
+   val result = dsTriplesInString.map{
+                  case trp : RecordStringTriples => RecordLongTriples(entitiesMap.value.get(trp.Subject).get,
                                                                                  predicatesMap.value.get(trp.Predicate).get,
                                                                                  entitiesMap.value.get(trp.Object).get )
-                 }
-   }
+   }        
    
    return result
  }
@@ -124,7 +132,7 @@ class ByIndexConverter( triples : Triples,
            
 		 val predicatesMap = spark.sparkContext.broadcast(
            predicates.collect().map{
-              row => (row.get(0).asInstanceOf[String], row.get(1).asInstanceOf[Long]).swap // swaping the order
+              row => (row.get(0).asInstanceOf[String], row.get(1).asInstanceOf[Long]).swap // swapping the order
            }.toMap
            )
            

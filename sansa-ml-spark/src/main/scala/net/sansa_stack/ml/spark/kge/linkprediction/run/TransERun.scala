@@ -23,7 +23,7 @@ object TransERun {
 
   def main(args: Array[String]) = {
 
-    val table = new Triples("kge", "/home/lpfgarcia/Desktop/tensor/data/train.txt", sk)
+    val table = new Triples("kge", "/home/hamed/workspace/TransE/DataSets/FB15k/freebase_mtr100_mte100-train.txt", sk)
     println(table.triples.show())
     val data = new ByIndex(table.triples, sk).df
 
