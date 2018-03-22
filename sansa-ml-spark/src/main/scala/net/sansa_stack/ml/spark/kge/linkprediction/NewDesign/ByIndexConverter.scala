@@ -77,6 +77,7 @@ class ByIndexConverter( triples : Triples,
 //                 }
 //   }
            
+           
    val result = dsTriplesInString.map{
                   case trp : RecordStringTriples => RecordLongTriples(entitiesMap.value.get(trp.Subject).get,
                                                                                  predicatesMap.value.get(trp.Predicate).get,

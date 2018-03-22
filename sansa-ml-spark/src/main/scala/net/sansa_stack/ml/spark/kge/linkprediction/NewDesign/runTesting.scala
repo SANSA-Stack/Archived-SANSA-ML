@@ -78,14 +78,16 @@ object runTesting extends App {
   println("\n\n------ TESTING -----")
   
   lazy val smp1 = trp.triples.take(n)
-  lazy val sample1 = smp1.toSeq.toDF().asInstanceOf[Dataset[RecordStringTriples]]
+  val sample1 = smp1.toSeq.toDS()
+  println(sample1.rdd.collect().head )
   
   sample1.show()
 //  MyUtility.exit
+
   
   val r3 = conv.getTriplesByIndex(sample1)
   r3.printSchema()
-  printType(r3)
+//  printType(r3)
 
   r3.show()
   
@@ -100,7 +102,8 @@ object runTesting extends App {
 //  y.foreach{ t => println(t.toString())}
   
   
-//  val r4 = conv.getTriplesByString(r3)
-  //println(r4==sample1)
+  val r4 = conv.getTriplesByString(r3)
+  
+  r4.show()
   println("<<< DONE >>>")
 }
