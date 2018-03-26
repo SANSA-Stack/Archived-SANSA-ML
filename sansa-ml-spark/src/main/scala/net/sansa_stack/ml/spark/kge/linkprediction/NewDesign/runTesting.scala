@@ -84,23 +84,15 @@ object runTesting extends App {
   sample1.show()
 //  MyUtility.exit
 
+  var r3=conv.getTriplesByIndex(sample1)
+  MyUtility.time{
+   r3 = conv.getTriplesByIndex(sample1)
+  r3.count()
+  }
   
-  val r3 = conv.getTriplesByIndex(sample1)
+//  MyUtility.exit
   r3.printSchema()
-//  printType(r3)
-
   r3.show()
-  
-  
-
-
-//  val t = r3.map{ case r:RecordLongTriples => r.Predicate.toString()}.collect()
-//  t.foreach(println)
-  
-//  val y =r3.map{ case r: RecordLongTriples => (r.Subject,r.Predicate,r.Object) }
-//     
-//  y.foreach{ t => println(t.toString())}
-  
   
   val r4 = conv.getTriplesByString(r3)
   

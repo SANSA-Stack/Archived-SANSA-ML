@@ -69,20 +69,20 @@ class ByIndexConverter( triples : Triples,
            }.toMap
            )
            
-//   val result0 = dsTriplesInString.mapPartitions{
-//                 iter => iter.map{
-//                             case trp : RecordStringTriples => RecordLongTriples(entitiesMap.value.get(trp.Subject).get,
-//                                                                                 predicatesMap.value.get(trp.Predicate).get,
-//                                                                                 entitiesMap.value.get(trp.Object).get )
-//                 }
-//   }
-           
-           
-   val result = dsTriplesInString.map{
-                  case trp : RecordStringTriples => RecordLongTriples(entitiesMap.value.get(trp.Subject).get,
+   val result = dsTriplesInString.mapPartitions{
+                 iter => iter.map{
+                             case trp : RecordStringTriples => RecordLongTriples(entitiesMap.value.get(trp.Subject).get,
                                                                                  predicatesMap.value.get(trp.Predicate).get,
                                                                                  entitiesMap.value.get(trp.Object).get )
-   }        
+                 }
+   }
+           
+           
+//   val result = dsTriplesInString.map{
+//                  case trp : RecordStringTriples => RecordLongTriples(entitiesMap.value.get(trp.Subject).get,
+//                                                                                 predicatesMap.value.get(trp.Predicate).get,
+//                                                                                 entitiesMap.value.get(trp.Object).get )
+//   }        
    
    return result
  }
