@@ -13,25 +13,46 @@ import net.sansa_stack.ml.spark.classification._
  * Class for basic functions of DL trees
  */
 
-
 class DLTree {
-
-    val sparkSession = SparkSession.builder
-          .master("local[*]")
-          .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
-          .appName("Description Logic Tree")
-          .getOrCreate()
-          
-    val conf = new SparkConf().setAppName("DL Tree").setMaster("local[*]")  // local mode
-    val sc = new SparkContext(conf)
   
+  var rmatch: Int = _
+  var omission: Int = _
+  var commission: Int = _
+  var induction: Int = _
+  
+  def getMatch : Int = rmatch
+  
+  def setMatch (rmatch: Int): Unit = {
+    this.rmatch += 1
+  }
+  
+  
+  def getOmission : Int = omission
+  
+  def setOmission (omission: Int): Unit = {
+    this.omission += 1
+  }
+  
+  
+  def getCommission : Int = commission
+  
+  def setCommission (commission: Int): Unit = {
+    this.commission += 1
+  }
+  
+  
+  def getInduction : Int = induction
+  
+  def setInduction (induction: Int): Unit = {
+    this.induction += 1
+  }
+
+
+
   private class DLNode(var concept: OWLClassExpression) {
     
-// positive decision subtree
-    var pos: DLTree = null //this.neg = null
-
-// negative decision subtree
-    var neg: DLTree = _
+    var pos: DLTree = null   // positive subtree 
+    var neg: DLTree = null   // negative subtree
 
     override def toString(): String = this.concept.toString
 
@@ -45,7 +66,7 @@ class DLTree {
   }
 
   /**
-    * @param root the root to set
+    * @param concept the root to set
     */
   def setRoot(concept: OWLClassExpression): Unit = {
     this.root = new DLNode(concept)
@@ -60,10 +81,10 @@ class DLTree {
   }
 
   override def toString(): String = {
-    if (root == null) null
+    if (root == null) return null
     if (root.pos == null && root.neg == null) root.toString
     else
-      root.concept.toString + " [" + root.pos.toString + " " + root.neg.toString + "]" 
+      root.concept.toString + " [" + root.pos.toString + ", " + root.neg.toString + "]" 
    }
 
    /**
@@ -81,18 +102,18 @@ class DLTree {
    * function to get the number of nodes 
    */
   
-  private def getNodi(): Double = {
+ /*def getNodi(sc: SparkSession): Double = {
     
     // visit in to make the count
     val lista: ArrayList[DLNode] = new ArrayList[DLNode]()
-    var Li = sc.parallelize(lista.asScala)
+    var Li = sc.sparkContext.parallelize(lista.asScala)
     
     var num: Double = 0 
     if (root != null)
     {
       var ele : List[DLNode] = new ArrayList[DLNode]
       ele.add(root)
-      var eleRDD = sc.parallelize(ele.asScala) 
+      var eleRDD = sc.sparkContext.parallelize(ele.asScala) 
       Li = eleRDD.union(Li)
       
       while (!Li.isEmpty)
@@ -108,7 +129,7 @@ class DLTree {
           
           sx = node.pos.root.asInstanceOf[DLNode]
           SL.add(sx)
-          var SLRDD = sc.parallelize(SL.asScala)
+          var SLRDD = sc.sparkContext.parallelize(SL.asScala)
           
           
           if (sx != null)  Li.union(SLRDD)
@@ -118,7 +139,7 @@ class DLTree {
          
           sx = node.neg.root.asInstanceOf[DLNode]
           SL.add(sx)
-          var SLRDD = sc.parallelize(SL.asScala)
+          var SLRDD = sc.sparkContext.parallelize(SL.asScala)
           
           if (sx != null) Li.union(SLRDD)
         }
@@ -129,7 +150,7 @@ class DLTree {
       
      
 
- def getComplexityMeasure() : Double = getNodi
+   def getComplexityMeasure(sc: SparkSession) : Double = getNodi(sc)*/
 
 
 
