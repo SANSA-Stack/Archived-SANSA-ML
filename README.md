@@ -9,6 +9,7 @@ SANSA-ML is the Machine Learning (ML) library in the SANSA stack (see http://san
 The ML layer currently supports the following algorithms:
 * RDF graph clustering (Power Iteration, Border Flow, Link based clustering, Modularity based clustering, Silvia Link Clustering)
 * Rule mining in RDF graphs based on [AMIE+](https://www.mpi-inf.mpg.de/departments/databases-and-information-systems/research/yago-naga/amie/)
+* RDF graph kernel based on [A Fast and Simple Graph Kernel for RDF](http://ceur-ws.org/Vol-1082/paper2.pdf)
 * Semantic similarity measures (Jaccard similarity,Rodríguez and Egenhofer similarity, Tversky Ratio Model, Batet Similarity)
 * Knowledge graph embedding approaches: 
   * TransE (beta status)
@@ -16,6 +17,7 @@ The ML layer currently supports the following algorithms:
 * Terminological Decision Trees for the classification of concepts(beta status)
 * Anomaly detection (beta status)
 * RDF graph kernel based on [A Fast and Simple Graph Kernel for RDF](http://ceur-ws.org/Vol-1082/paper2.pdf)
+
 
 Please see https://github.com/SANSA-Stack/SANSA-Examples/tree/master/sansa-examples-spark/src/main/scala/net/sansa_stack/examples/spark/ml for examples on how to use the above machine learning approaches.
 
