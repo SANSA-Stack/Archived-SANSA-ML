@@ -18,7 +18,7 @@ import org.apache.spark.sql.SparkSession
 import org.apache.spark.{SparkConf, SparkContext}
 
 import net.sansa_stack.ml.spark.classification._
-import net.sansa_stack.ml.spark.classification.KB.KB
+//import net.sansa_stack.ml.spark.classification.KB
 import net.sansa_stack.ml.spark.classification.TDTClassifiers.TDTClassifiers
 
 /*
@@ -26,21 +26,23 @@ import net.sansa_stack.ml.spark.classification.TDTClassifiers.TDTClassifiers
  */
 
 object TDTInducer {
-    var stream: PrintStream = _
+   // var stream: PrintStream = _
     
-class TDTInducer(var kb: KB, var nConcepts: Int, var sc: SparkSession) {
+class TDTInducer(var kb: KB, var nConcepts: Int, var sc: SparkSession) extends Serializable{
 
 //for each query concept induce an ensemble
   var trees: Array[DLTree] = new Array[DLTree](nConcepts)
 
   var cl: TDTClassifiers = new TDTClassifiers(kb, sc)
-
-  
+  var pos: RDD[String] = _
+  var neg: RDD[String] = _
+  var und: RDD[String] = _
+ 
   
   /*
    * Function for training the algorithm
    */
-  def training(results: Array[Array[Int]], trainingExs: RDD[OWLIndividual],
+  def training(results: RDD[(OWLClassExpression, OWLIndividual, Int)], trainingExs: RDD[OWLIndividual],
                         testConcepts: Array[OWLClassExpression],
                         negTestConcepts: Array[OWLClassExpression]): Unit = {
   
@@ -58,7 +60,7 @@ class TDTInducer(var kb: KB, var nConcepts: Int, var sc: SparkSession) {
       
       // These instances should be divided into negative instances, positive and uncertain 
       // split._1 = posExs,    split._2 = negExs,  split._3 = undExs
-      val split = splitting(trainingExs, results, c)
+      val split = splitting(trainingExs, results, testConcepts(c))
       
       var prPos: Double = split._1.count.toDouble / (trainingExs.count.toInt)
       var prNeg: Double = split._2.count.toDouble / (trainingExs.count.toInt)
@@ -78,8 +80,70 @@ class TDTInducer(var kb: KB, var nConcepts: Int, var sc: SparkSession) {
 
     }
   }
-  
+
   /*
+   * Function for splitting the training examples into positive, negative and undefined examples
+   */
+  
+  def splitting(trainingExs: RDD[OWLIndividual], 
+                classifications: RDD[(OWLClassExpression, OWLIndividual, Int)], 
+                c: OWLClassExpression): (RDD[String],RDD[String],RDD[String]) = {
+
+    pos = classifications.filter(_._1 == c).filter(_._3 == +1).map(_._2.toString()).cache()
+    neg = classifications.filter(_._1 == c).filter(_._3 == -1).map(_._2.toString()).cache()
+    und = classifications.filter(_._1 == c).filter(_._3 == 0).map(_._2.toString())
+    (pos, neg, und)
+  }
+    
+//    var BINARYCLASSIFICATION : Boolean = false
+
+    //val ppos = classifications.filter(x => x._2 == +1).cache()
+    //ppos.take(50).foreach(println(_))
+  
+  //    if (pos.count.toInt == 0){
+//      if (!BINARYCLASSIFICATION) {
+//        neg = classifications.filter(_._2 == -1).map(_._1._2.toString()).cache()
+//      }
+//    }
+//    else{
+//      und = classifications.filter(_._2 == 0).map(_._1._2.toString())
+//    }
+   
+  //    var pos = new ArrayList[String]()
+//    var neg = new ArrayList[String]()
+//    var und = new ArrayList[String]()
+//    for (i <-0 until trainingExs.count.toInt){
+      
+//      val trainValue = trainingExs.take(i+1).apply(i)
+      //var trainIndex = TExs.lookup(trainValue)
+      //println("\nvalue : " + trainValue)
+      
+//      val trainIndex = trainingExs.take(trainingExs.count.toInt).indexOf(trainValue)
+     // println("index : " + trainIndex)
+      
+      
+
+    
+//      if (trainIndex != -1){
+//        val value = trainValue.toString()
+//        if (classifications(c)(trainIndex) == +1)
+//            pos.add(value)
+//        else if (!BINARYCLASSIFICATION) {
+//          if (classifications(c)(trainIndex) == -1)
+//            neg.add(value)
+//        else
+//            und.add(value)
+//      }
+//      else
+//          neg.add(value)
+//     }
+//   }
+//    var posExs = sc.sparkContext.parallelize(pos.asScala)
+//    var negExs = sc.sparkContext.parallelize(neg.asScala)
+//    var undExs = sc.sparkContext.parallelize(und.asScala)
+    
+
+    /*
    * Function for testing the algorithm
    */
   def test (f: Int, testExs: RDD[OWLIndividual], testConcepts: Array[OWLClassExpression]): Array[Array[Int]] = {
@@ -101,55 +165,6 @@ class TDTInducer(var kb: KB, var nConcepts: Int, var sc: SparkSession) {
     }
     labels
   }
-
-  /*
-   * Function for splitting the training examples into positive, negative and undefined examples
-   */
-  
-  def splitting(trainingExs: RDD[OWLIndividual], classifications: Array[Array[Int]], c: Int): (RDD[String],RDD[String],RDD[String]) = {
-    
-    var BINARYCLASSIFICATION : Boolean = false
-//    var classRDD = sc.sparkContext.parallelize(classifications,2)
-//    var pos = classRDD.filter(_ == +1)
-    
-    var pos = new ArrayList[String]()
-    var neg = new ArrayList[String]()
-    var und = new ArrayList[String]()
-    var TExs = trainingExs.zipWithIndex()
-    
-    for (i <-0 until trainingExs.count.toInt){
-      
-      val trainValue = trainingExs.take(i+1).apply(i)
-      //var trainIndex = TExs.lookup(trainValue)
-      //println("\nvalue : " + trainValue)
-      val trainIndex = trainingExs.take(trainingExs.count.toInt).indexOf(trainValue)
-     // println("index : " + trainIndex)
-      
-/*      var p = trainingExs.filter{ exs => 
-        val v = exs.toString()
- 
-      }*/
-    
-      if (trainIndex != -1){
-        val value = trainValue.toString()
-        if (classifications(c)(trainIndex) == +1)
-            pos.add(value)
-        else if (!BINARYCLASSIFICATION) {
-          if (classifications(c)(trainIndex) == -1)
-            neg.add(value)
-        else
-            und.add(value)
-      }
-      else
-          neg.add(value)
-     }
-   }
-    var posExs = sc.sparkContext.parallelize(pos.asScala)
-    var negExs = sc.sparkContext.parallelize(neg.asScala)
-    var undExs = sc.sparkContext.parallelize(und.asScala)
-    
-    (posExs, negExs, undExs)
-  }    
 //    val TList : List[Integer]= new ArrayList[Integer]
 //    var T = sc.sparkContext.parallelize(TList.asScala)
 //    

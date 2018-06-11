@@ -14,7 +14,7 @@ import org.semanticweb.owlapi.model.OWLNamedIndividual
 
 import net.sansa_stack.ml.spark.classification
 import net.sansa_stack.ml.spark.classification.TDTInducer.TDTInducer
-import net.sansa_stack.ml.spark.classification.KB.KB
+//import net.sansa_stack.ml.spark.classification.KB
 import net.sansa_stack.ml.spark.classification.ConceptsGenerator._
 
 import org.apache.spark.rdd.RDD
@@ -27,7 +27,7 @@ object ClassMembership {
     protected var allExamples: RDD[OWLIndividual] = _
     protected var testConcepts: Array[OWLClassExpression] = _
     protected var negTestConcepts: Array[OWLClassExpression] = _
-    protected var classification: Array[Array[Int]] = _
+    protected var classification: RDD[(OWLClassExpression, OWLIndividual, Int)] = _
 
  /**
   * Implementing class-membership
@@ -80,7 +80,7 @@ object ClassMembership {
         // training phase: using all examples but only those in the f-th partition
         println("\nTraining is starting...")
  
-        val results: Array[Array[Int]] = k.getClassMembershipResult
+        val results: RDD[(OWLClassExpression, OWLIndividual, Int)] = k.getClassMembershipResult
         classifier.training(results, trainingRDD, testConcepts, negTestConcepts)
   
         val labels: Array[Array[Int]] = classifier.test(f, testRDD, testConcepts)

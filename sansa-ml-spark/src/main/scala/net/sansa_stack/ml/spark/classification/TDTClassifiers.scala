@@ -18,7 +18,7 @@ import org.semanticweb.owlapi.model.OWLEquivalentClassesAxiom
 //import org.semanticweb.owlapi.model.IRI
 
 import net.sansa_stack.ml.spark.classification
-import net.sansa_stack.ml.spark.classification.KB.KB
+//import net.sansa_stack.ml.spark.classification.KB
 import net.sansa_stack.ml.spark.classification._
 
 import org.apache.spark.rdd.RDD

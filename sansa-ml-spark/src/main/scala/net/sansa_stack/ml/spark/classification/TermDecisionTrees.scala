@@ -6,7 +6,7 @@ import scala.collection.JavaConverters._
 import org.semanticweb.owlapi.model.OWLClassExpression
 import org.semanticweb.owlapi.model.OWLIndividual
 
-import net.sansa_stack.ml.spark.classification.KB.KB
+//import net.sansa_stack.ml.spark.classification.KB.KB
 import net.sansa_stack.ml.spark.classification.ClassMembership.ClassMembership
 import net.sansa_stack.ml.spark.classification.TDTClassifiers.TDTClassifiers
 
@@ -41,7 +41,7 @@ object TermDecisionTrees {
    
     //Call owl axion builder to read the classes and object properties and print
       
- 	 	val rdd : OWLAxiomsRDD = FunctionalSyntaxOWLAxiomsRDDBuilder.build(sparkSession, input)
+ 	 	val rdd : OWLAxiomsRDD = FunctionalSyntaxOWLAxiomsRDDBuilder.build(sparkSession.sparkContext, input)
    
     val kb: KB = new KB(input, rdd, sparkSession)
     var ClassM = new ClassMembership(kb, sparkSession)

@@ -22,7 +22,7 @@ import org.semanticweb.owlapi.model.OWLIndividual
 import org.semanticweb.owlapi.model.OWLNamedIndividual
 import org.semanticweb.owlapi.search.EntitySearcher
 import net.sansa_stack.ml.spark.classification._
-import net.sansa_stack.ml.spark.classification.KB.KB
+import net.sansa_stack.ml.spark.classification.KB
 import org.apache.spark.rdd.RDD
 
 object RefinementOperator {
