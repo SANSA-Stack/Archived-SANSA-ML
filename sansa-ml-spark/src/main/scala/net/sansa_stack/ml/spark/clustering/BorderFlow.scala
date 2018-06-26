@@ -3,7 +3,6 @@ package net.sansa_stack.ml.spark.clustering
 import org.apache.spark.rdd.RDD
 import org.apache.spark.graphx.{ Graph, EdgeDirection }
 import scala.math.BigDecimal
-//import org.apache.commons.math.util.MathUtils
 import org.apache.spark.sql.SparkSession
 import scala.reflect.runtime.universe._
 import scopt.OptionParser
@@ -15,7 +14,6 @@ import java.lang.{ Long => JLong }
 import java.lang.{ Long => JLong }
 import breeze.linalg.{ squaredDistance, DenseVector, Vector }
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.graphx.GraphLoader
 import scala.util.control.Breaks._
 import org.apache.jena.datatypes.{ RDFDatatype, TypeMapper }
 import org.apache.jena.graph.{ Node => JenaNode, Triple => JenaTriple, _ }
@@ -30,68 +28,33 @@ import org.apache.spark.graphx._
 import org.apache.jena.util._
 import java.io.StringWriter
 import java.io._
+import org.apache.spark.graphx.Graph
 
 object BorderFlow {
 
-  def apply(spark: SparkSession, edgesInputPath: String) = {
+  def apply(spark: SparkSession, graph: Graph[String, String], output: String, outputevlsoft: String, outputevlhard: String) = {
 
-    /*
-	 * Load the RDF file and convert it to a graph.
-	 */
-
-    val RDFfile = spark.sparkContext.textFile(edgesInputPath).map(line =>
-      RDFDataMgr.createIteratorTriples(new ByteArrayInputStream(line.getBytes), Lang.NTRIPLES, null).next())
-
-    val r = RDFfile.map(f => {
-      val s = f.getSubject.getURI
-      val p = f.getPredicate.getURI
-      val o = f.getObject.getURI
-
-      (s, p, o)
-    })
-
-    val v1 = r.map(f => f._1)
-    val v2 = r.map(f => f._3)
-    val indexedmap = (v1.union(v2)).distinct().zipWithIndex()
-
-    val vertices: RDD[(VertexId, String)] = indexedmap.map(x => (x._2, x._1))
-    val _iriToId: RDD[(String, VertexId)] = indexedmap.map(x => (x._1, x._2))
-
-    val tuples = r.keyBy(f => f._1).join(indexedmap).map({
-      case (k, ((s, p, o), si)) => (o, (si, p))
-    })
-
-    val edgess: RDD[Edge[String]] = tuples.join(indexedmap).map({
-      case (k, ((si, p), oi)) => Edge(si, oi, p)
-    })
-    edgess.foreach(f => println(f))
-
-    val graph = org.apache.spark.graphx.Graph(vertices, edgess)
-    val output = "/TinaBoroukhian/output/results.txt"
-    val outputevl = "/TinaBoroukhian/output/evaluation.txt"
-
-    /*
-	 * undirected graph : orient =0
-	 * directed graph : orient =1.
-	 *
-	 *  Jaccard similarity measure : selectYourSimilarity = 0
-	 *  Rodríguez and Egenhofer similarity measure : selectYourSimilarity = 1
-	 *  The Ratio model similarity : selectYourSimilarity = 2
-	 *  Batet similarity measure : selectYourSimilarity = 3
-	 *
-	 */
+    /**
+     * undirected graph : orient =0
+     * directed graph : orient =1.
+     *
+     *  Jaccard similarity measure : selectYourSimilarity = 0
+     *  Rodríguez and Egenhofer similarity measure : selectYourSimilarity = 1
+     *  The Ratio model similarity : selectYourSimilarity = 2
+     *  Batet similarity measure : selectYourSimilarity = 3
+     *
+     */
     val orient = 1
     val selectYourSimilarity = 0
-    val Heuristics = 0
 
     def clusterRdd(): List[List[Long]] = {
-      graphXinBorderFlow(orient, selectYourSimilarity, Heuristics)
+      graphXinBorderFlow(orient, selectYourSimilarity)
     }
 
     /*
 	 * Computes different similarities function for a given graph @graph.
 	 */
-    def graphXinBorderFlow(e: Int, f: Int, g: Int): List[List[Long]] = {
+    def graphXinBorderFlow(e: Int, f: Int): List[List[Long]] = {
 
       val edge = graph.edges.collect()
       val vertex = graph.vertices.count().toDouble
@@ -114,16 +77,15 @@ object BorderFlow {
 
       var X: List[Long] = sort.distinct.collect().toList.distinct
 
-      /*
-	 * Computing logarithm based 2
-	 */
+      /**
+       * Computing logarithm based 2
+       */
       val LOG2 = math.log(2)
       val log2 = { x: Double => math.log(x) / LOG2 }
 
-      /*
-	 * Difference between two set of vertices, used in different similarity measures
-	 */
-
+      /**
+       * Difference between two set of vertices, used in different similarity measures
+       */
       def difference(a: Long, b: Long): Double = {
         val ansec = neighbor.lookup(a).distinct.head.toSet
         val ansec1 = neighbor.lookup(b).distinct.head.toSet
@@ -134,9 +96,9 @@ object BorderFlow {
         differ.size.toDouble
       }
 
-      /*
-	 * Intersection of two set of vertices, used in different similarity measures
-	 */
+      /**
+       * Intersection of two set of vertices, used in different similarity measures
+       */
 
       def intersection(a: Long, b: Long): Double = {
         val inters = neighbor.lookup(a).distinct.head.toSet
@@ -147,10 +109,9 @@ object BorderFlow {
         rst.size.toDouble
       }
 
-      /*
-			 * Union of two set of vertices, used in different similarity measures
-			 */
-
+      /**
+       * Union of two set of vertices, used in different similarity measures
+       */
       def union(a: Long, b: Long): Double = {
         val inters = neighbor.lookup(a).distinct.head.toSet
         val inters1 = neighbor.lookup(b).distinct.head.toSet
@@ -164,9 +125,9 @@ object BorderFlow {
         var s = 0.0
         if (c == 0) {
 
-          /*
-			 * Jaccard similarity measure
-			 */
+          /**
+           * Jaccard similarity measure
+           */
 
           val sim = intersection(a, b) / union(a, b).toDouble
           if (sim == 0.0) { s = (1 / vertex) }
@@ -176,9 +137,9 @@ object BorderFlow {
 
         if (c == 1) {
 
-          /*
-			 * Rodríguez and Egenhofer similarity measure
-			 */
+          /**
+           * Rodríguez and Egenhofer similarity measure
+           */
 
           var g = 0.8
 
@@ -188,9 +149,10 @@ object BorderFlow {
 
         }
         if (c == 2) {
-          /*
-			 * The Ratio model similarity
-			 */
+
+          /**
+           * The Ratio model similarity
+           */
           var alph = 0.5
           var beth = 0.5
 
@@ -201,9 +163,10 @@ object BorderFlow {
         }
 
         if (c == 3) {
-          /*
-			 * Batet similarity measure
-			 */
+
+          /**
+           * Batet similarity measure
+           */
 
           val cal = 1 + ((difference(a, b) + difference(b, a)) / (difference(a, b) + difference(b, a) + intersection(a, b))).abs
           val sim = log2(cal.toDouble)
@@ -305,7 +268,7 @@ object BorderFlow {
 
       }
 
-      //computing F(X) for BorderFlow
+      // computing F(X) for BorderFlow
 
       def fX(x: List[Long]): Double = {
         var jaccardX = 0.0
@@ -318,7 +281,6 @@ object BorderFlow {
             for (k <- 0 until b.length) yield {
               val nX = neighbor.lookup(b(k)).distinct.head
 
-              //val nXa = nX.diff(b).toList.distinct
               listN = listN.union(nX).distinct
 
             }
@@ -381,7 +343,7 @@ object BorderFlow {
 
         //  ( ( listOfNb(listOfB(x)).intersect(x)).size.toDouble / (listOfNb(listOfB(x)).intersect(listOfN(x))).size.toDouble)
 
-        //(makeomegaB(b,x) / makeomegaB(b,n))
+        // (makeomegaB(b,x) / makeomegaB(b,n))
       }
 
       def omega(u: Long, x: List[Long]): Double = {
@@ -393,7 +355,6 @@ object BorderFlow {
           for (k <- 0 until b.length) yield {
             val nX = neighbor.lookup(b(k)).distinct.head
 
-            // val nXa = nX.diff(b).toList.distinct
             listN = listN.union(nX).distinct
 
           }
@@ -495,7 +456,6 @@ object BorderFlow {
           for (k <- 0 until c.length) yield {
             val nX = neighbor.lookup(c(k)).distinct.head
 
-            //val nXa = nX.diff(c).toList.distinct
             listN = listN.union(nX).distinct
 
           }
@@ -574,15 +534,13 @@ object BorderFlow {
 	 * Input for nonHeuristics nonHeuristicsCluster(element,List())  .
 	 */
 
-      def makeClusters(a: Long, b: Int): List[Long] = {
+      def makeClusters(a: Long): List[Long] = {
 
         var clusters: List[Long] = List()
-        if (b == 0) {
-          clusters = nonHeuristicsCluster(List(a), List())
-        }
-        if (b == 1) {
-          clusters = heuristicsCluster(List(a))
-        }
+
+        clusters = nonHeuristicsCluster(List(a), List())
+        // if(b == 1){
+        // clusters = heuristicsCluster(List(a))}
 
         (clusters)
 
@@ -592,13 +550,17 @@ object BorderFlow {
 
       for (i <- 0 until X.length) {
 
-        val finalClusters = makeClusters(X(i), g)
+        val finalClusters = makeClusters(X(i))
 
         bigList = bigList.::(finalClusters)
 
       }
 
       bigList = bigList.map(_.distinct)
+
+      /*
+			 * Sillouhette Evaluation soft
+			 */
 
       def avgAsoft(c: List[Long], d: Long): Double = {
         var sumA = 0.0
@@ -669,6 +631,10 @@ object BorderFlow {
       }
 
       val evaluateSoft = AiBiSoft(bigList, X)
+
+      /*
+			 * Apply Hardening
+			 */
 
       def subset(c: List[List[Long]]): List[List[Long]] = {
         var C = c
@@ -789,6 +755,10 @@ object BorderFlow {
       bigList = reassignment(bigList, X)
       bigList = nul(bigList)
 
+      /*
+			 * Sillouhette Evaluation Hard
+			 */
+
       def avgA(c: List[Long], d: Long): Double = {
         var sumA = 0.0
         val sizeC = c.length
@@ -858,22 +828,30 @@ object BorderFlow {
       val evaluate = AiBi(bigList, X)
 
       val av = evaluate.sum / evaluate.size
-      // println(s"average: $av\n")
-      //println(s"evaluateSoft: $evaluateSoft\n")
+      val evaluateString: List[String] = List(av.toString())
+      val evaluateStringRDD = spark.sparkContext.parallelize(evaluateString)
+
+      evaluateStringRDD.saveAsTextFile(outputevlhard)
 
       val avsoft = evaluateSoft.sum / evaluateSoft.size
-      // println(s"averagesoft: $avsoft\n")
+      val evaluateStringS: List[String] = List(avsoft.toString())
+      val evaluateStringRDDS = spark.sparkContext.parallelize(evaluateStringS)
 
-      // println(s"List of Cluster assignments after Hardening: $bigList\n")
+      evaluateStringRDDS.saveAsTextFile(outputevlsoft)
+      //println(s"averagesoft: $avsoft\n")
 
       bigList
     }
+
+    /*
+			 * convert to RDF
+			 */
 
     def makerdf(a: List[Long]): List[String] = {
       var listuri: List[String] = List()
       val b: List[VertexId] = a
       for (i <- 0 until b.length) {
-        vertices.collect().map(v => {
+        graph.vertices.collect().map(v => {
           if (b(i) == v._1) listuri = listuri.::(v._2)
         })
 
@@ -881,12 +859,11 @@ object BorderFlow {
       listuri
 
     }
-    val file = "BorderFlow1.txt"
 
-    val pw = new PrintWriter(new File(file))
     val rdf = clusterRdd.map(x => makerdf(x))
-    // println(s"RDF Cluster assignments: $rdf\n")
-    pw.println(s"RDF Cluster assignments: $rdf\n")
-    pw.close()
+    val rdfRDD = spark.sparkContext.parallelize(rdf)
+
+    rdfRDD.saveAsTextFile(output)
+
   }
 }

@@ -1,1645 +1,2987 @@
 package net.sansa_stack.ml.spark.outliers.vandalismdetection
 
-import Array._
-import java.util.{Arrays, ArrayList, Collections, HashMap}
-import java.util.regex.{Matcher, Pattern}
-import java.util.List
-import com.google.common.base.Splitter
-import java.io.{BufferedReader, ByteArrayInputStream, FileReader}
-import org.apache.jena.graph.Triple
-import org.apache.jena.rdf.model.ModelFactory
+import org.apache.spark.{ SparkContext, RangePartitioner }
+import org.apache.spark.sql._
+import org.apache.spark.sql.expressions.Window
+import org.apache.hadoop.mapred.JobConf
+import java.util.Scanner
+import org.json.JSONObject
 import org.apache.commons.lang3.StringUtils
+import org.apache.spark.sql.functions.{ concat, lit }
+import org.apache.spark.ml.feature.{ Word2Vec, Word2VecModel }
+import org.apache.spark.ml.Pipeline
+import org.apache.spark.ml.feature.VectorAssembler
+import org.apache.spark.ml.linalg.Vector
+
+class VandalismDetection extends Serializable {
+
+  
+  
+  
+  // Function 1 : Distributed RDF Parser Approach
+  def Start_RDF_Parser_Appraoch(sc: SparkContext): Unit = {
+    
+    val sqlContext = new org.apache.spark.sql.SQLContext(sc)
+    import sqlContext.implicits._
+    import org.apache.spark.sql.functions._ // for UDF
+    import org.apache.spark.sql.types._
+    
+    println("*********************************************************************")
+    println("Distributed RDF Parser Model")
+    println("Please Enter 1 for JTriple and  2 for TRIX  process and 3 for RDFXML:")
+    println("*********************************************************************")
+
+    val num = scala.io.StdIn.readLine()
+    if (num == "1") {
+      println("JTriple.........!!!!!!")
+      // Streaming records:RDFJtriple file :
+      val jobConf = new JobConf()
+
+      val JTriple_Parser_OBJ = new ParseJTriple()
+      val DRF_Builder_JTripleOBJ = new FacilitiesClass()
+      val RDD_JTriple = JTriple_Parser_OBJ.Start_JTriple_Parser(jobConf, sc)
+      RDD_JTriple.foreach(println)
+      //----------------------------DF for RDF TRIX ------------------------------------------
+      //  Create SQLContext Object:
+      val sqlContext = new org.apache.spark.sql.SQLContext(sc)
+      val DFR_JTriple = DRF_Builder_JTripleOBJ.RDD_TO_DFR_JTriple(RDD_JTriple, sqlContext)
+      DFR_JTriple.show()
+      
+
+    } else if (num == "2") {
+
+      println("TRIX.........!!!!!!")
+      // Streaming records:RDFTRIX file :
+      val jobConf = new JobConf()
+      val TRIX_Parser_OBJ = new ParseTRIX()
+      val DRF_Builder_RDFTRIX_OBJ = new FacilitiesClass()
+      val RDD_TRIX = TRIX_Parser_OBJ.Start_TriX_Parser(jobConf, sc)
+      RDD_TRIX.foreach(println)
+      //----------------------------DF for RDF TRIX ------------------------------------------
+      //  Create SQLContext Object:
+      val sqlContext = new org.apache.spark.sql.SQLContext(sc)
+      val DFR_TRIX = DRF_Builder_RDFTRIX_OBJ.RDD_TO_DFR_TRIX(RDD_TRIX, sqlContext)
+      DFR_TRIX.show()
+      
+
+    } else if (num == "3") {
+      println("RDF XML .........!!!!!!")
+      // Streaming records:RDFXML file :
+      val jobConf_Record = new JobConf()
+      val jobConf_Prefixes = new JobConf()
+
+      val RDFXML_Parser_OBJ = new ParseRDFXML()
+      val DRF_Builder_RDFXML_OBJ = new FacilitiesClass()
+
+      val RDD_RDFXML = RDFXML_Parser_OBJ.start_RDFXML_Parser(jobConf_Record, jobConf_Prefixes, sc)
+      RDD_RDFXML.foreach(println)
+
+      //----------------------------DF for RDF XML ------------------------------------------
+      //  Create SQLContext Object:
+      val sqlContext = new org.apache.spark.sql.SQLContext(sc)
+      val DFR_RDF_XML = DRF_Builder_RDFXML_OBJ.RDD_TO_DFR_RDFXML(RDD_RDFXML, sqlContext)
+      DFR_RDF_XML.show()
 
-object VandalismDetection extends Serializable {
-
-//Build Vector Features extraction Values:
-  def build_VectorFeature(TRP: String): String = {
-
-    var trp: Array[String] = TRP.split("::", 3)
-    var OB = trp(2)
-    var StrValue = OB
-    var FeatureValues = new ArrayList[Double]()
-    val x = -1.0
-    val xx = ""
-    var VectorString =TRP
-    VectorString = VectorString + "::["
-    // Features for character:
-    //1.
-    val uppercase = UppercaseRation_Character(StrValue)
-    if (!uppercase.isNaN()) {
-      FeatureValues.add(uppercase)
-      VectorString = VectorString + uppercase.toString() + ","
-    } else {
-      FeatureValues.add(x)
-
-      VectorString = VectorString + xx + ","
-    }
-    //2.
-    val lowerCase = LowercaseRation_Character(StrValue)
-    if (!lowerCase.isNaN()) {
-      FeatureValues.add(lowerCase)
-      VectorString = VectorString + lowerCase.toString() + ","
-
-    } else {
-      FeatureValues.add(x)
-      VectorString = VectorString + xx + ","
-
-    }
-    //3.
-    val Alphanumeric = AlphanumericRation_Character(StrValue)
-    if (!Alphanumeric.isNaN()) {
-      FeatureValues.add(Alphanumeric)
-      VectorString = VectorString + Alphanumeric.toString() + ","
-
-    } else {
-      FeatureValues.add(x)
-      VectorString = VectorString + xx + ","
-
-    }
-
-    //4.
-    val ASCII = ASCIIRation_Character(StrValue)
-    if (!ASCII.isNaN()) {
-      FeatureValues.add(ASCII)
-      VectorString = VectorString + ASCII.toString() + ","
-
-    } else {
-      FeatureValues.add(x)
-      VectorString = VectorString + xx + ","
-
-    }
-    //5.
-    val Bracket = BracketRation_Character(StrValue)
-    if (!Bracket.isNaN()) {
-      FeatureValues.add(Bracket)
-      VectorString = VectorString + Bracket.toString() + ","
-
-    } else {
-      FeatureValues.add(x)
-      VectorString = VectorString + xx + ","
-
-    }
-
-    //6.
-    val Digits = DigitsRation_Character(StrValue)
-    if (!Digits.isNaN()) {
-      FeatureValues.add(Digits)
-      VectorString = VectorString + Digits.toString() + ","
-
-    } else {
-      FeatureValues.add(x)
-      VectorString = VectorString + xx + ","
-
-    }
-
-    //7.
-    val Latin = Latin_Character(StrValue)
-    if (!Latin.isNaN()) {
-      FeatureValues.add(Latin)
-      VectorString = VectorString + Latin.toString() + ","
-
-    } else {
-      FeatureValues.add(x)
-      VectorString = VectorString + xx + ","
-
-    }
-
-    //8.
-
-    val WhiteSpace = WhiteSpace_Character(StrValue)
-    if (!WhiteSpace.isNaN()) {
-      FeatureValues.add(WhiteSpace)
-      VectorString = VectorString + WhiteSpace.toString() + ","
-
-    } else {
-      FeatureValues.add(x)
-      VectorString = VectorString + xx + ","
-
-    }
-    //9.
-    val punc = Punct_Character(StrValue)
-    if (!punc.isNaN()) {
-      FeatureValues.add(punc)
-      VectorString = VectorString + punc.toString() + ","
-
-    } else {
-      FeatureValues.add(x)
-      VectorString = VectorString + xx + ","
-
-    }
-    //10.
-    val LongCharacterSequence = Longcharactersequence_Character(StrValue)
-    if (!LongCharacterSequence.isNaN()) {
-      FeatureValues.add(LongCharacterSequence)
-      VectorString = VectorString + LongCharacterSequence.toString() + ","
-
-    } else {
-      FeatureValues.add(x)
-      VectorString = VectorString + xx + ","
-
-    }
-
-    //11.
-    val ArabicCharacter = ArabicRation_Character(StrValue)
-    if (!ArabicCharacter.isNaN()) {
-      FeatureValues.add(ArabicCharacter)
-      VectorString = VectorString + ArabicCharacter.toString() + ","
-
-    } else {
-      FeatureValues.add(x)
-      VectorString = VectorString + xx + ","
-
-    }
-
-    //12.
-    val Bengali = BengaliRation_Character(StrValue)
-    if (!Bengali.isNaN()) {
-      FeatureValues.add(Bengali)
-      VectorString = VectorString + Bengali.toString() + ","
-
-    } else {
-      FeatureValues.add(x)
-      VectorString = VectorString + xx + ","
-
-    }
-
-    //13.
-    val Brahmi = BrahmiRation_Character(StrValue)
-    if (!Brahmi.isNaN()) {
-      FeatureValues.add(Brahmi)
-      VectorString = VectorString + Brahmi.toString() + ","
-
-    } else {
-      FeatureValues.add(x)
-      VectorString = VectorString + xx + ","
-
-    }
-
-    //14.
-    val Cyrillic = CyrillicRation_Character(StrValue)
-    if (!Cyrillic.isNaN()) {
-      FeatureValues.add(Cyrillic)
-      VectorString = VectorString + Cyrillic.toString() + ","
-
-    } else {
-      FeatureValues.add(x)
-      VectorString = VectorString + xx + ","
-
-    }
-    //15.
-    val Han = HanRatio_Character(StrValue)
-    if (!Han.isNaN()) {
-      FeatureValues.add(Han)
-      VectorString = VectorString + Han.toString() + ","
-
-    } else {
-      FeatureValues.add(x)
-      VectorString = VectorString + xx + ","
-
-    }
-
-    //16.
-    val Malysia = MalaysRatio_Character(StrValue)
-    if (Malysia.isNaN()) {
-      FeatureValues.add(Malysia)
-      VectorString = VectorString + Malysia.toString() + ","
-
-    } else {
-      FeatureValues.add(x)
-      VectorString = VectorString + xx + ","
-
-    }
-
-    //17.
-    val Tami = TamilRatio_Character(StrValue)
-    if (!Tami.isNaN()) {
-      FeatureValues.add(Tami)
-      VectorString = VectorString + Tami.toString() + ","
-
-    } else {
-      FeatureValues.add(x)
-      VectorString = VectorString + xx + ","
-
-    }
-
-    //18.
-    val Telugu = TeluguRatio_Character(StrValue)
-    if (!Telugu.isNaN()) {
-      FeatureValues.add(Telugu)
-      VectorString = VectorString + Telugu.toString() + ","
-
-    } else {
-      FeatureValues.add(x)
-      VectorString = VectorString + xx + ","
-
-    }
-    //19.==1. WOrd Feature
-    val LanguageWord = LanguageWordRatio_Character(StrValue)
-    if (!LanguageWord.isNaN()) {
-      FeatureValues.add(LanguageWord)
-      VectorString = VectorString + LanguageWord.toString() + ","
-
-    } else {
-      FeatureValues.add(x)
-      VectorString = VectorString + xx + ","
-
-    }
-
-    //20.2  Boolean case:
-
-    //21.3
-    val UpperCaseWord = UppercaseWordRation(StrValue)
-    if (!UpperCaseWord.isNaN()) {
-      FeatureValues.add(UpperCaseWord)
-      VectorString = VectorString + UpperCaseWord.toString() + ","
-
-    } else {
-      FeatureValues.add(x)
-      VectorString = VectorString + xx + ","
-
-    }
-
-    //22.4
-    val LowerCaseWord = LowercaseWordRation(StrValue)
-    if (!LowerCaseWord.isNaN()) {
-      FeatureValues.add(LowerCaseWord)
-      VectorString = VectorString + LowerCaseWord.toString() + ","
-
-    } else {
-      FeatureValues.add(x)
-      VectorString = VectorString + xx + ","
-
-    }
-
-    //23.5 Boolean Case
-
-    //24.6  Integer Case
-
-    val LongWord = LongestWord(StrValue)
-    if (LongWord != null) {
-      val castedValue = LongWord.toDouble
-      FeatureValues.add(castedValue)
-      VectorString = VectorString + castedValue.toString() + ","
-
-    } else {
-      FeatureValues.add(x)
-      VectorString = VectorString + xx + ","
-
-    }
-
-    //25.7
-    val BadWord = BadWordRation(StrValue)
-    if (!BadWord.isNaN()) {
-      FeatureValues.add(BadWord)
-      VectorString = VectorString + BadWord.toString() + ","
-
-    } else {
-      FeatureValues.add(x)
-      VectorString = VectorString + xx + ","
-
-    }
-
-    //26.8  Bad word Boolean case
-
-    //27.9 Ban word Boolean case
-
-    //28.10 Ban word
-    val BanWord = BanWordRation(StrValue)
-    if (!BanWord.isNaN()) {
-      FeatureValues.add(BanWord)
-      VectorString = VectorString + BanWord.toString() + ","
-
-    } else {
-      FeatureValues.add(x)
-      VectorString = VectorString + xx + ","
-
-    }
-
-    //29.11  Contain language word  Boolean Case
-
-    //30.12 Male Name Word  Boolean Case
-
-    //31.13 Female Name WOrd  Boolean Case
-
-    var Size = FeatureValues.size().toInt
-    var Result_Feature_Value_Vector = Array.ofDim[Double](Size)
-
-    for (a <- 0 until Size - 1) {
-      Result_Feature_Value_Vector +:= FeatureValues.get(a).toDouble
-    }
-    VectorString + "]"
-  }
-
-  // This function for RDFXML case.
-  def arrayListTOstring(Arraylistval: ArrayList[Triple]): String = {
-    val str = Arraylistval.get(0).toString()
-    str
-  }
-  // This function for RDFXML case.
-  def RecordParse(record: String, prefixes: String): ArrayList[Triple] = {
-    var triples = new ArrayList[Triple]()
-    var model = ModelFactory.createDefaultModel();
-    val modelText = "<?xml version=\"1.0\" encoding=\"utf-8\" ?> \n" + prefixes + record + "</rdf:RDF>"
-    model.read(new ByteArrayInputStream(modelText.getBytes()), "http://example.org");
-    val iter = model.listStatements()
-    while (iter.hasNext()) {
-      var triple = iter.next().asTriple()
-      triples.add(triple)
-    }
-    triples
-  }
-  // This function for RDFXML case.
-  def prefixParse(line: String): ArrayList[String] = {
-    var temp = line
-    val prefixRegex = Pattern.compile("xmlns\\s*:\\s*[a-zA-Z][a-zA-Z0-9_]*\\s*=\\s*([\"'])(?:(?=(\\\\?))\\2.)*?\\1")
-    var matcher = prefixRegex.matcher(temp)
-    var vars = new ArrayList[String]()
-    while (matcher.find()) {
-      var x = temp.substring(matcher.start(), matcher.end())
-      vars.add(x.toString())
-      temp = temp.substring(0, matcher.start()) + temp.substring(matcher.end(), temp.length())
-      matcher = prefixRegex.matcher(temp)
-    }
-    vars
-  }
-  // Character Features: ------ start calculation the Ratio for character:
-  def characterRatio(str: String, pattern: Pattern): Double = {
-    var charRatio: Double = -1.0;
-    if (str != null) {
-      val tem: String = pattern.matcher(str).replaceAll("")
-      val digits: Double = str.length() - tem.length()
-      charRatio = digits / str.length().toDouble
-    }
-    charRatio
-  }
-  //1.Uppercase Ratio:
-  def UppercaseRation_Character(str: String): Double = {
-    val pattern: Pattern = Pattern.compile("\\p{javaUpperCase}")
-    val result: Double = characterRatio(str, pattern)
-    result
-  }
-  //2.lower Ratio:
-  def LowercaseRation_Character(str: String): Double = {
-    val pattern: Pattern = Pattern.compile("\\p{javaLowerCase}")
-    val result: Double = characterRatio(str, pattern)
-    result
-  }
-  //3.Alphanumeric
-  def AlphanumericRation_Character(str: String): Double = {
-    val pattern: Pattern = Pattern.compile("\\p{Alnum}")
-    val result: Double = characterRatio(str, pattern)
-    result
-  }
-  //4.ASCII
-  def ASCIIRation_Character(str: String): Double = {
-    val pattern: Pattern = Pattern.compile("\\p{ASCII}")
-    val result: Double = characterRatio(str, pattern)
-    result
-  }
-  //5.Bracket
-  def BracketRation_Character(str: String): Double = {
-    val pattern: Pattern = Pattern.compile("\\(|\\)")
-    val result: Double = characterRatio(str, pattern)
-    result
-  }
-  //6.Digits
-  def DigitsRation_Character(str: String): Double = {
-    val pattern: Pattern = Pattern.compile("\\d")
-    val result: Double = characterRatio(str, pattern)
-    result
-  }
-  //7.Latin
-  def Latin_Character(str: String): Double = {
-    val pattern: Pattern = Pattern.compile("\\p{IsLatin}")
-    val result: Double = characterRatio(str, pattern)
-    result
-  }
-  //8.WhiteSpace
-  def WhiteSpace_Character(str: String): Double = {
-    val pattern: Pattern = Pattern.compile("\\s")
-    val result: Double = characterRatio(str, pattern)
-    result
-  }
-  //9.Punct
-  def Punct_Character(str: String): Double = {
-    val pattern: Pattern = Pattern.compile("\\p{Punct}")
-    val result: Double = characterRatio(str, pattern)
-    result
-  }
-  //10.Long character sequence:
-  def Longcharactersequence_Character(str: String): Double = {
-    var text: String = str
-    var maxlength: Integer = null
-    if (str != null) {
-      maxlength = 0
-      var prevCharacter: Char = 'a'
-      var prevPosision = 0
-      text = text.trim()
-      var i: Integer = 0
-      for (i <- 0 until text.length) {
-        val Currcharacter: Char = text.charAt(i)
-        if (i > 0 && prevCharacter != Currcharacter) {
-
-          if (i - prevPosision > maxlength) {
-            maxlength = i - prevPosision
-          }
-          prevPosision = i
-        }
-        prevCharacter = Currcharacter
-      }
-
-      if (i > 0) {
-        if (i - prevPosision > maxlength) {
-          maxlength = prevPosision
-        }
-      }
-    }
-
-    val result: Double = maxlength.toDouble
-    result
-
-  }
-
-  // Character MISC:
-  //11.ARabic Ratio:
-  def ArabicRation_Character(str: String): Double = {
-    val pattern: Pattern = Pattern.compile("\\p{IsArabic}")
-    val result: Double = characterRatio(str, pattern)
-    result
-  }
-  //12. Bengali Ratio
-  def BengaliRation_Character(str: String): Double = {
-    val pattern: Pattern = Pattern.compile("\\p{IsBengali}")
-    val result: Double = characterRatio(str, pattern)
-    result
-  }
-  //13.Brahmi Ratio
-  def BrahmiRation_Character(str: String): Double = {
-    val pattern: Pattern = Pattern.compile("\\p{IsBrahmi}")
-    val result: Double = characterRatio(str, pattern)
-    result
-  }
-  //14.Cyrillic
-  def CyrillicRation_Character(str: String): Double = {
-    val pattern: Pattern = Pattern.compile("\\p{IsCyrillic}")
-    val result: Double = characterRatio(str, pattern)
-    result
-  }
-  //15.HanRatio
-  def HanRatio_Character(str: String): Double = {
-    val pattern: Pattern = Pattern.compile("\\p{IsHan}")
-    val result: Double = characterRatio(str, pattern)
-    result
-  }
-
-  //16.MalaysianRatio:
-  def MalaysRatio_Character(str: String): Double = {
-    val pattern: Pattern = Pattern.compile("\\p{IsMalayalam}")
-    val result: Double = characterRatio(str, pattern)
-    result
-  }
-  //17.TamilRAtio:
-  def TamilRatio_Character(str: String): Double = {
-    val pattern: Pattern = Pattern.compile("\\p{IsTamil}")
-    val result: Double = characterRatio(str, pattern)
-    result
-  }
-  //18.Telugu Ration:
-  def TeluguRatio_Character(str: String): Double = {
-    val pattern: Pattern = Pattern.compile("\\p{IsTelugu}")
-    val result: Double = characterRatio(str, pattern)
-    result
-  }
-  // Character features: ------ End calculation the Ratio for character:
-
-  // Words features: ------ start calculation the Ratio for Words:
-  // Word Features
-  def WordRatio(str: String, pattern: Pattern): Double = {
-
-    val pattern_splitting: Pattern = Pattern.compile("\\s+")
-    var wordRatio: Double = -1.0;
-    val words: Array[String] = pattern_splitting.split(str.trim())
-    if (words.length > 0) {
-      wordRatio = 0;
-    }
-    val matcher: Matcher = pattern.matcher("")
-    for (word <- words) {
-      var strword = word.trim()
-      if (!strword.equals("") && matcher.reset(strword).matches()) {
-        wordRatio = wordRatio + 1
-      }
-    }
-    wordRatio = wordRatio / words.length
-    wordRatio
-
-  }
-  //1.Language Words Ratio :
-  val regex_LanguageWordRatio: String = "(a(frikaa?ns|lbanian?|lemanha|ng(lais|ol)|ra?b(e?|[ei]c|ian?|isc?h)|rmenian?|ssamese|azeri|z[e\\u0259]rba(ijani?|ycan(ca)?|yjan)|\\u043d\\u0433\\u043b\\u0438\\u0439\\u0441\\u043a\\u0438\\u0439)|b(ahasa( (indonesia|jawa|malaysia|melayu))?|angla|as(k|qu)e|[aeo]ng[ao]?li|elarusian?|okm\\u00e5l|osanski|ra[sz]il(ian?)?|ritish( kannada)?|ulgarian?)|c(ebuano|hina|hinese( simplified)?|zech|roat([eo]|ian?)|atal[a\\u00e0]n?|\\u0440\\u043f\\u0441\\u043a\\u0438|antonese)|[c\\u010d](esky|e[s\\u0161]tina)\r\n|d(an(isc?h|sk)|e?uts?ch)|e(esti|ll[hi]nika|ng(els|le(ski|za)|lisc?h)|spa(g?[n\\u00f1]h?i?ol|nisc?h)|speranto|stonian|usk[ae]ra)|f(ilipino|innish|ran[c\\u00e7](ais|e|ez[ao])|ren[cs]h|arsi|rancese)|g(al(ego|ician)|uja?rati|ree(ce|k)|eorgian|erman[ay]?|ilaki)|h(ayeren|ebrew|indi|rvatski|ungar(y|ian))|i(celandic|ndian?|ndonesian?|ngl[e\\u00ea]se?|ngilizce|tali(ano?|en(isch)?))|ja(pan(ese)?|vanese)|k(a(nn?ada|zakh)|hmer|o(rean?|sova)|urd[i\\u00ee])|l(at(in[ao]?|vi(an?|e[s\\u0161]u))|ietuvi[u\\u0173]|ithuanian?)|m(a[ck]edon(ian?|ski)|agyar|alay(alam?|sian?)?|altese|andarin|arathi|elayu|ontenegro|ongol(ian?)|yanmar)|n(e(d|th)erlands?|epali|orw(ay|egian)|orsk( bokm[a\\u00e5]l)?|ynorsk)|o(landese|dia)|p(ashto|ersi?an?|ol(n?isc?h|ski)|or?tugu?[e\\u00ea]se?(( d[eo])? brasil(eiro)?| ?\\(brasil\\))?|unjabi)|r(om[a\\u00e2i]ni?[a\\u0103]n?|um(ano|\\u00e4nisch)|ussi([ao]n?|sch))|s(anskrit|erbian|imple english|inha?la|lov(ak(ian?)?|en\\u0161?[c\\u010d]ina|en(e|ij?an?)|uomi)|erbisch|pagnolo?|panisc?h|rbeska|rpski|venska|c?wedisc?h|hqip)|t(a(galog|mil)|elugu|hai(land)?|i[e\\u1ebf]ng vi[e\\u1ec7]t|[u\\u00fc]rk([c\\u00e7]e|isc?h|i\\u015f|ey))|u(rdu|zbek)|v(alencia(no?)?|ietnamese)|welsh|(\\u0430\\u043d\\u0433\\u043b\\u0438\\u0438\\u0441|[k\\u043a]\\u0430\\u043b\\u043c\\u044b\\u043a\\u0441|[k\\u043a]\\u0430\\u0437\\u0430\\u0445\\u0441|\\u043d\\u0435\\u043c\\u0435\\u0446|[p\\u0440]\\u0443\\u0441\\u0441|[y\\u0443]\\u0437\\u0431\\u0435\\u043a\\u0441)\\u043a\\u0438\\u0439( \\u044f\\u0437\\u044b\\u043a)??|\\u05e2\\u05d1\\u05e8\\u05d9\\u05ea|[k\\u043a\\u049b](\\u0430\\u0437\\u0430[\\u043a\\u049b]\\u0448\\u0430|\\u044b\\u0440\\u0433\\u044b\\u0437\\u0447\\u0430|\\u0438\\u0440\\u0438\\u043b\\u043b)|\\u0443\\u043a\\u0440\\u0430\\u0457\\u043d\\u0441\\u044c\\u043a(\\u0430|\\u043e\\u044e)|\\u0431(\\u0435\\u043b\\u0430\\u0440\\u0443\\u0441\\u043a\\u0430\\u044f|\\u044a\\u043b\\u0433\\u0430\\u0440\\u0441\\u043a\\u0438( \\u0435\\u0437\\u0438\\u043a)?)|\\u03b5\\u03bb\\u03bb[\\u03b7\\u03b9]\\u03bd\\u03b9\\u03ba(\\u03ac|\\u03b1)|\\u10e5\\u10d0\\u10e0\\u10d7\\u10e3\\u10da\\u10d8|\\u0939\\u093f\\u0928\\u094d\\u0926\\u0940|\\u0e44\\u0e17\\u0e22|[m\\u043c]\\u043e\\u043d\\u0433\\u043e\\u043b(\\u0438\\u0430)?|([c\\u0441]\\u0440\\u043f|[m\\u043c]\\u0430\\u043a\\u0435\\u0434\\u043e\\u043d)\\u0441\\u043a\\u0438|\\u0627\\u0644\\u0639\\u0631\\u0628\\u064a\\u0629|\\u65e5\\u672c\\u8a9e|\\ud55c\\uad6d(\\ub9d0|\\uc5b4)|\\u200c\\u0939\\u093f\\u0928\\u0926\\u093c\\u093f|\\u09ac\\u09be\\u0982\\u09b2\\u09be|\\u0a2a\\u0a70\\u0a1c\\u0a3e\\u0a2c\\u0a40|\\u092e\\u0930\\u093e\\u0920\\u0940|\\u0c95\\u0ca8\\u0ccd\\u0ca8\\u0ca1|\\u0627\\u064f\\u0631\\u062f\\u064f\\u0648|\\u0ba4\\u0bae\\u0bbf\\u0bb4\\u0bcd|\\u0c24\\u0c46\\u0c32\\u0c41\\u0c17\\u0c41|\\u0a97\\u0ac1\\u0a9c\\u0ab0\\u0abe\\u0aa4\\u0ac0|\\u0641\\u0627\\u0631\\u0633\\u06cc|\\u067e\\u0627\\u0631\\u0633\\u06cc|\\u0d2e\\u0d32\\u0d2f\\u0d3e\\u0d33\\u0d02|\\u067e\\u069a\\u062a\\u0648|\\u1019\\u103c\\u1014\\u103a\\u1019\\u102c\\u1018\\u102c\\u101e\\u102c|\\u4e2d\\u6587(\\u7b80\\u4f53|\\u7e41\\u9ad4)?|\\u4e2d\\u6587\\uff08(\\u7b80\\u4f53?|\\u7e41\\u9ad4)\\uff09|\\u7b80\\u4f53|\\u7e41\\u9ad4)";
-  val pattern_LanguageWordRatio: Pattern = Pattern.compile(regex_LanguageWordRatio);
-  def LanguageWordRatio_Character(str: String): Double = {
-    val result: Double = WordRatio(str, pattern_LanguageWordRatio)
-    result
-  }
-
-  //2. Contain language word :
-  val regex_ContainLanguageWord: String = "(^|\\n)([ei]n )??(a(frikaa?ns|lbanian?|lemanha|ng(lais|ol)|ra?b(e?|[ei]c|ian?|isc?h)|rmenian?|ssamese|azeri|z[e\\u0259]rba(ijani?|ycan(ca)?|yjan)|\\u043d\\u0433\\u043b\\u0438\\u0439\\u0441\\u043a\\u0438\\u0439)|b(ahasa( (indonesia|jawa|malaysia|melayu))?|angla|as(k|qu)e|[aeo]ng[ao]?li|elarusian?|okm\\u00e5l|osanski|ra[sz]il(ian?)?|ritish( kannada)?|ulgarian?)|c(ebuano|hina|hinese( simplified)?|zech|roat([eo]|ian?)|atal[a\\u00e0]n?|\\u0440\\u043f\\u0441\\u043a\\u0438|antonese)|[c\\u010d](esky|e[s\\u0161]tina)\r\n|d(an(isc?h|sk)|e?uts?ch)|e(esti|ll[hi]nika|ng(els|le(ski|za)|lisc?h)|spa(g?[n\\u00f1]h?i?ol|nisc?h)|speranto|stonian|usk[ae]ra)|f(ilipino|innish|ran[c\\u00e7](ais|e|ez[ao])|ren[cs]h|arsi|rancese)|g(al(ego|ician)|uja?rati|ree(ce|k)|eorgian|erman[ay]?|ilaki)|h(ayeren|ebrew|indi|rvatski|ungar(y|ian))|i(celandic|ndian?|ndonesian?|ngl[e\\u00ea]se?|ngilizce|tali(ano?|en(isch)?))|ja(pan(ese)?|vanese)|k(a(nn?ada|zakh)|hmer|o(rean?|sova)|urd[i\\u00ee])|l(at(in[ao]?|vi(an?|e[s\\u0161]u))|ietuvi[u\\u0173]|ithuanian?)|m(a[ck]edon(ian?|ski)|agyar|alay(alam?|sian?)?|altese|andarin|arathi|elayu|ontenegro|ongol(ian?)|yanmar)|n(e(d|th)erlands?|epali|orw(ay|egian)|orsk( bokm[a\\u00e5]l)?|ynorsk)|o(landese|dia)|p(ashto|ersi?an?|ol(n?isc?h|ski)|or?tugu?[e\\u00ea]se?(( d[eo])? brasil(eiro)?| ?\\(brasil\\))?|unjabi)|r(om[a\\u00e2i]ni?[a\\u0103]n?|um(ano|\\u00e4nisch)|ussi([ao]n?|sch))|s(anskrit|erbian|imple english|inha?la|lov(ak(ian?)?|en\\u0161?[c\\u010d]ina|en(e|ij?an?)|uomi)|erbisch|pagnolo?|panisc?h|rbeska|rpski|venska|c?wedisc?h|hqip)|t(a(galog|mil)|elugu|hai(land)?|i[e\\u1ebf]ng vi[e\\u1ec7]t|[u\\u00fc]rk([c\\u00e7]e|isc?h|i\\u015f|ey))|u(rdu|zbek)|v(alencia(no?)?|ietnamese)|welsh|(\\u0430\\u043d\\u0433\\u043b\\u0438\\u0438\\u0441|[k\\u043a]\\u0430\\u043b\\u043c\\u044b\\u043a\\u0441|[k\\u043a]\\u0430\\u0437\\u0430\\u0445\\u0441|\\u043d\\u0435\\u043c\\u0435\\u0446|[p\\u0440]\\u0443\\u0441\\u0441|[y\\u0443]\\u0437\\u0431\\u0435\\u043a\\u0441)\\u043a\\u0438\\u0439( \\u044f\\u0437\\u044b\\u043a)??|\\u05e2\\u05d1\\u05e8\\u05d9\\u05ea|[k\\u043a\\u049b](\\u0430\\u0437\\u0430[\\u043a\\u049b]\\u0448\\u0430|\\u044b\\u0440\\u0433\\u044b\\u0437\\u0447\\u0430|\\u0438\\u0440\\u0438\\u043b\\u043b)|\\u0443\\u043a\\u0440\\u0430\\u0457\\u043d\\u0441\\u044c\\u043a(\\u0430|\\u043e\\u044e)|\\u0431(\\u0435\\u043b\\u0430\\u0440\\u0443\\u0441\\u043a\\u0430\\u044f|\\u044a\\u043b\\u0433\\u0430\\u0440\\u0441\\u043a\\u0438( \\u0435\\u0437\\u0438\\u043a)?)|\\u03b5\\u03bb\\u03bb[\\u03b7\\u03b9]\\u03bd\\u03b9\\u03ba(\\u03ac|\\u03b1)|\\u10e5\\u10d0\\u10e0\\u10d7\\u10e3\\u10da\\u10d8|\\u0939\\u093f\\u0928\\u094d\\u0926\\u0940|\\u0e44\\u0e17\\u0e22|[m\\u043c]\\u043e\\u043d\\u0433\\u043e\\u043b(\\u0438\\u0430)?|([c\\u0441]\\u0440\\u043f|[m\\u043c]\\u0430\\u043a\\u0435\\u0434\\u043e\\u043d)\\u0441\\u043a\\u0438|\\u0627\\u0644\\u0639\\u0631\\u0628\\u064a\\u0629|\\u65e5\\u672c\\u8a9e|\\ud55c\\uad6d(\\ub9d0|\\uc5b4)|\\u200c\\u0939\\u093f\\u0928\\u0926\\u093c\\u093f|\\u09ac\\u09be\\u0982\\u09b2\\u09be|\\u0a2a\\u0a70\\u0a1c\\u0a3e\\u0a2c\\u0a40|\\u092e\\u0930\\u093e\\u0920\\u0940|\\u0c95\\u0ca8\\u0ccd\\u0ca8\\u0ca1|\\u0627\\u064f\\u0631\\u062f\\u064f\\u0648|\\u0ba4\\u0bae\\u0bbf\\u0bb4\\u0bcd|\\u0c24\\u0c46\\u0c32\\u0c41\\u0c17\\u0c41|\\u0a97\\u0ac1\\u0a9c\\u0ab0\\u0abe\\u0aa4\\u0ac0|\\u0641\\u0627\\u0631\\u0633\\u06cc|\\u067e\\u0627\\u0631\\u0633\\u06cc|\\u0d2e\\u0d32\\u0d2f\\u0d3e\\u0d33\\u0d02|\\u067e\\u069a\\u062a\\u0648|\\u1019\\u103c\\u1014\\u103a\\u1019\\u102c\\u1018\\u102c\\u101e\\u102c|\\u4e2d\\u6587(\\u7b80\\u4f53|\\u7e41\\u9ad4)?|\\u4e2d\\u6587\\uff08(\\u7b80\\u4f53?|\\u7e41\\u9ad4)\\uff09|\\u7b80\\u4f53|\\u7e41\\u9ad4)( language)??($|\\n)";
-  val pattern_ContainLanguageWord: Pattern = Pattern.compile(regex_ContainLanguageWord);
-  val matcher_ContainLanguageWord: Matcher = pattern_ContainLanguageWord.matcher("");
-  def ContainLanguageWord(str: String): Boolean = {
-
-    var text: String = str
-    var result: Boolean = false
-    if (text != null) {
-      text = text.trim()
-      text = text.toLowerCase()
-      result = matcher_ContainLanguageWord.reset(text).matches()
-    }
-
-    result
-  }
-
-  //3. Upper case word Ratio:
-  def UppercaseWordRation(str: String): Double = {
-    val pattern: Pattern = Pattern.compile("\\p{Lu}.*")
-    val result: Double = WordRatio(str, pattern)
-    result
-  }
-
-  //4.  Lower case word Ratio:
-  def LowercaseWordRation(str: String): Double = {
-    val pattern: Pattern = Pattern.compile("[\\p{L}&&[^\\p{Lu}]].*")
-    val result: Double = WordRatio(str, pattern)
-    result
-  }
-  //5.word Contain URL :
-  val pattern_WordContainURL: Pattern = Pattern.compile("\\b(https?:\\/\\/|www\\.)\\S{10}.*", Pattern.CASE_INSENSITIVE
-    | Pattern.UNICODE_CASE | Pattern.DOTALL | Pattern.CANON_EQ)
-  val matcher_WordContainURL: Matcher = pattern_WordContainURL.matcher("");
-  def ContainURLWord(str: String): Boolean = {
-
-    var text: String = str
-    var result: Boolean = false
-    if (text != null) {
-      text = text.trim()
-      text = text.toLowerCase()
-      result = matcher_WordContainURL.reset(text).matches()
-    }
-
-    result
-  }
-
-  //6. Longest Word
-  val pattern_longestWord: Pattern = Pattern.compile("\\p{IsAlphabetic}+", Pattern.CASE_INSENSITIVE
-    | Pattern.UNICODE_CASE | Pattern.DOTALL | Pattern.CANON_EQ);
-  val matcher_longestWord: Matcher = pattern_WordContainURL.matcher("");
-  def LongestWord(str: String): Integer = {
-
-    var max: Integer = null
-    var text: String = str
-    if (text != null) {
-      max = 0;
-      text = text.trim()
-      matcher_longestWord.reset(text)
-      while (matcher_longestWord.find()) {
-
-        var lenght: Integer = matcher_longestWord.end() - matcher_longestWord.start()
-        if (lenght > max) {
-          max = lenght
-        }
-
-      }
-    }
-
-    max
-  }
-  //7. Bad Word : It is Ok
-  val luisVonAhnWordlist: Array[String] =
-    Array("abbo", "abo",
-      "abortion", "abuse", "addict", "addicts", "adult", "africa",
-      "african", "alla", "allah", "alligatorbait", "amateur", "american",
-      "anal", "analannie", "analsex", "angie", "angry", "anus", "arab",
-      "arabs", "areola", "argie", "aroused", "arse", "arsehole", "asian",
-      "ass", "assassin", "assassinate", "assassination", "assault",
-      "assbagger", "assblaster", "assclown", "asscowboy", "asses",
-      "assfuck", "assfucker", "asshat", "asshole", "assholes", "asshore",
-      "assjockey", "asskiss", "asskisser", "assklown", "asslick",
-      "asslicker", "asslover", "assman", "assmonkey", "assmunch",
-      "assmuncher", "asspacker", "asspirate", "asspuppies", "assranger",
-      "asswhore", "asswipe", "athletesfoot", "attack", "australian",
-      "babe", "babies", "backdoor", "backdoorman", "backseat", "badfuck",
-      "balllicker", "balls", "ballsack", "banging", "baptist",
-      "barelylegal", "barf", "barface", "barfface", "bast", "bastard ",
-      "bazongas", "bazooms", "beaner", "beast", "beastality", "beastial",
-      "beastiality", "beatoff", "beat-off", "beatyourmeat", "beaver",
-      "bestial", "bestiality", "bi", "biatch", "bible", "bicurious",
-      "bigass", "bigbastard", "bigbutt", "bigger", "bisexual",
-      "bi-sexual", "bitch", "bitcher", "bitches", "bitchez", "bitchin",
-      "bitching", "bitchslap", "bitchy", "biteme", "black", "blackman",
-      "blackout", "blacks", "blind", "blow", "blowjob", "boang", "bogan",
-      "bohunk", "bollick", "bollock", "bomb", "bombers", "bombing",
-      "bombs", "bomd", "bondage", "boner", "bong", "boob", "boobies",
-      "boobs", "booby", "boody", "boom", "boong", "boonga", "boonie",
-      "booty", "bootycall", "bountybar", "bra", "brea5t", "breast",
-      "breastjob", "breastlover", "breastman", "brothel", "bugger",
-      "buggered", "buggery", "bullcrap", "bulldike", "bulldyke",
-      "bullshit", "bumblefuck", "bumfuck", "bunga", "bunghole", "buried",
-      "burn", "butchbabes", "butchdike", "butchdyke", "butt", "buttbang",
-      "butt-bang", "buttface", "buttfuck", "butt-fuck", "buttfucker",
-      "butt-fucker", "buttfuckers", "butt-fuckers", "butthead",
-      "buttman", "buttmunch", "buttmuncher", "buttpirate", "buttplug",
-      "buttstain", "byatch", "cacker", "cameljockey", "cameltoe",
-      "canadian", "cancer", "carpetmuncher", "carruth", "catholic",
-      "catholics", "cemetery", "chav", "cherrypopper", "chickslick",
-      "children's", "chin", "chinaman", "chinamen", "chinese", "chink",
-      "chinky", "choad", "chode", "christ", "christian", "church",
-      "cigarette", "cigs", "clamdigger", "clamdiver", "clit", "clitoris",
-      "clogwog", "cocaine", "cock", "cockblock", "cockblocker",
-      "cockcowboy", "cockfight", "cockhead", "cockknob", "cocklicker",
-      "cocklover", "cocknob", "cockqueen", "cockrider", "cocksman",
-      "cocksmith", "cocksmoker", "cocksucer", "cocksuck ", "cocksucked ",
-      "cocksucker", "cocksucking", "cocktail", "cocktease", "cocky",
-      "cohee", "coitus", "color", "colored", "coloured", "commie",
-      "communist", "condom", "conservative", "conspiracy", "coolie",
-      "cooly", "coon", "coondog", "copulate", "cornhole", "corruption",
-      "cra5h", "crabs", "crack", "crackpipe", "crackwhore",
-      "crack-whore", "crap", "crapola", "crapper", "crappy", "crash",
-      "creamy", "crime", "crimes", "criminal", "criminals", "crotch",
-      "crotchjockey", "crotchmonkey", "crotchrot", "cum", "cumbubble",
-      "cumfest", "cumjockey", "cumm", "cummer", "cumming", "cumquat",
-      "cumqueen", "cumshot", "cunilingus", "cunillingus", "cunn",
-      "cunnilingus", "cunntt", "cunt", "cunteyed", "cuntfuck",
-      "cuntfucker", "cuntlick ", "cuntlicker ", "cuntlicking ",
-      "cuntsucker", "cybersex", "cyberslimer", "dago", "dahmer",
-      "dammit", "damn", "damnation", "damnit", "darkie", "darky",
-      "datnigga", "dead", "deapthroat", "death", "deepthroat",
-      "defecate", "dego", "demon", "deposit", "desire", "destroy",
-      "deth", "devil", "devilworshipper", "dick", "dickbrain",
-      "dickforbrains", "dickhead", "dickless", "dicklick", "dicklicker",
-      "dickman", "dickwad", "dickweed", "diddle", "die", "died", "dies",
-      "dike", "dildo", "dingleberry", "dink", "dipshit", "dipstick",
-      "dirty", "disease", "diseases", "disturbed", "dive", "dix",
-      "dixiedike", "dixiedyke", "doggiestyle", "doggystyle", "dong",
-      "doodoo", "doo-doo", "doom", "dope", "dragqueen", "dragqween",
-      "dripdick", "drug", "drunk", "drunken", "dumb", "dumbass",
-      "dumbbitch", "dumbfuck", "dyefly", "dyke", "easyslut", "eatballs",
-      "eatme", "eatpussy", "ecstacy", "ejaculate", "ejaculated",
-      "ejaculating ", "ejaculation", "enema", "enemy", "erect",
-      "erection", "ero", "escort", "ethiopian", "ethnic", "european",
-      "evl", "excrement", "execute", "executed", "execution",
-      "executioner", "explosion", "facefucker", "faeces", "fag",
-      "fagging", "faggot", "fagot", "failed", "failure", "fairies",
-      "fairy", "faith", "fannyfucker", "fart", "farted ", "farting ",
-      "farty ", "fastfuck", "fat", "fatah", "fatass", "fatfuck",
-      "fatfucker", "fatso", "fckcum", "fear", "feces", "felatio ",
-      "felch", "felcher", "felching", "fellatio", "feltch", "feltcher",
-      "feltching", "fetish", "fight", "filipina", "filipino",
-      "fingerfood", "fingerfuck ", "fingerfucked ", "fingerfucker ",
-      "fingerfuckers", "fingerfucking ", "fire", "firing", "fister",
-      "fistfuck", "fistfucked ", "fistfucker ", "fistfucking ",
-      "fisting", "flange", "flasher", "flatulence", "floo", "flydie",
-      "flydye", "fok", "fondle", "footaction", "footfuck", "footfucker",
-      "footlicker", "footstar", "fore", "foreskin", "forni", "fornicate",
-      "foursome", "fourtwenty", "fraud", "freakfuck", "freakyfucker",
-      "freefuck", "fu", "fubar", "fuc", "fucck", "fuck", "fucka",
-      "fuckable", "fuckbag", "fuckbuddy", "fucked", "fuckedup", "fucker",
-      "fuckers", "fuckface", "fuckfest", "fuckfreak", "fuckfriend",
-      "fuckhead", "fuckher", "fuckin", "fuckina", "fucking",
-      "fuckingbitch", "fuckinnuts", "fuckinright", "fuckit", "fuckknob",
-      "fuckme ", "fuckmehard", "fuckmonkey", "fuckoff", "fuckpig",
-      "fucks", "fucktard", "fuckwhore", "fuckyou", "fudgepacker",
-      "fugly", "fuk", "fuks", "funeral", "funfuck", "fungus", "fuuck",
-      "gangbang", "gangbanged ", "gangbanger", "gangsta", "gatorbait",
-      "gay", "gaymuthafuckinwhore", "gaysex ", "geez", "geezer", "geni",
-      "genital", "german", "getiton", "gin", "ginzo", "gipp", "girls",
-      "givehead", "glazeddonut", "gob", "god", "godammit", "goddamit",
-      "goddammit", "goddamn", "goddamned", "goddamnes", "goddamnit",
-      "goddamnmuthafucker", "goldenshower", "gonorrehea", "gonzagas",
-      "gook", "gotohell", "goy", "goyim", "greaseball", "gringo", "groe",
-      "gross", "grostulation", "gubba", "gummer", "gun", "gyp", "gypo",
-      "gypp", "gyppie", "gyppo", "gyppy", "hamas", "handjob", "hapa",
-      "harder", "hardon", "harem", "headfuck", "headlights", "hebe",
-      "heeb", "hell", "henhouse", "heroin", "herpes", "heterosexual",
-      "hijack", "hijacker", "hijacking", "hillbillies", "hindoo",
-      "hiscock", "hitler", "hitlerism", "hitlerist", "hiv", "ho", "hobo",
-      "hodgie", "hoes", "hole", "holestuffer", "homicide", "homo",
-      "homobangers", "homosexual", "honger", "honk", "honkers", "honkey",
-      "honky", "hook", "hooker", "hookers", "hooters", "hore", "hork",
-      "horn", "horney", "horniest", "horny", "horseshit", "hosejob",
-      "hoser", "hostage", "hotdamn", "hotpussy", "hottotrot", "hummer",
-      "husky", "hussy", "hustler", "hymen", "hymie", "iblowu", "idiot",
-      "ikey", "illegal", "incest", "insest", "intercourse",
-      "interracial", "intheass", "inthebuff", "israel", "israeli",
-      "israel's", "italiano", "itch", "jackass", "jackoff", "jackshit",
-      "jacktheripper", "jade", "jap", "japanese", "japcrap", "jebus",
-      "jeez", "jerkoff", "jesus", "jesuschrist", "jew", "jewish", "jiga",
-      "jigaboo", "jigg", "jigga", "jiggabo", "jigger ", "jiggy", "jihad",
-      "jijjiboo", "jimfish", "jism", "jiz ", "jizim", "jizjuice",
-      "jizm ", "jizz", "jizzim", "jizzum", "joint", "juggalo", "jugs",
-      "junglebunny", "kaffer", "kaffir", "kaffre", "kafir", "kanake",
-      "kid", "kigger", "kike", "kill", "killed", "killer", "killing",
-      "kills", "kink", "kinky", "kissass", "kkk", "knife", "knockers",
-      "kock", "kondum", "koon", "kotex", "krap", "krappy", "kraut",
-      "kum", "kumbubble", "kumbullbe", "kummer", "kumming", "kumquat",
-      "kums", "kunilingus", "kunnilingus", "kunt", "ky", "kyke",
-      "lactate", "laid", "lapdance", "latin", "lesbain", "lesbayn",
-      "lesbian", "lesbin", "lesbo", "lez", "lezbe", "lezbefriends",
-      "lezbo", "lezz", "lezzo", "liberal", "libido", "licker", "lickme",
-      "lies", "limey", "limpdick", "limy", "lingerie", "liquor",
-      "livesex", "loadedgun", "lolita", "looser", "loser", "lotion",
-      "lovebone", "lovegoo", "lovegun", "lovejuice", "lovemuscle",
-      "lovepistol", "loverocket", "lowlife", "lsd", "lubejob", "lucifer",
-      "luckycammeltoe", "lugan", "lynch", "macaca", "mad", "mafia",
-      "magicwand", "mams", "manhater", "manpaste", "marijuana",
-      "mastabate", "mastabater", "masterbate", "masterblaster",
-      "mastrabator", "masturbate", "masturbating", "mattressprincess",
-      "meatbeatter", "meatrack", "meth", "mexican", "mgger", "mggor",
-      "mickeyfinn", "mideast", "milf", "minority", "mockey", "mockie",
-      "mocky", "mofo", "moky", "moles", "molest", "molestation",
-      "molester", "molestor", "moneyshot", "mooncricket", "mormon",
-      "moron", "moslem", "mosshead", "mothafuck", "mothafucka",
-      "mothafuckaz", "mothafucked ", "mothafucker", "mothafuckin",
-      "mothafucking ", "mothafuckings", "motherfuck", "motherfucked",
-      "motherfucker", "motherfuckin", "motherfucking", "motherfuckings",
-      "motherlovebone", "muff", "muffdive", "muffdiver", "muffindiver",
-      "mufflikcer", "mulatto", "muncher", "munt", "murder", "murderer",
-      "muslim", "naked", "narcotic", "nasty", "nastybitch", "nastyho",
-      "nastyslut", "nastywhore", "nazi", "necro", "negro", "negroes",
-      "negroid", "negro's", "nig", "niger", "nigerian", "nigerians",
-      "nigg", "nigga", "niggah", "niggaracci", "niggard", "niggarded",
-      "niggarding", "niggardliness", "niggardliness's", "niggardly",
-      "niggards", "niggard's", "niggaz", "nigger", "niggerhead",
-      "niggerhole", "niggers", "nigger's", "niggle", "niggled",
-      "niggles", "niggling", "nigglings", "niggor", "niggur", "niglet",
-      "nignog", "nigr", "nigra", "nigre", "nip", "nipple", "nipplering",
-      "nittit", "nlgger", "nlggor", "nofuckingway", "nook", "nookey",
-      "nookie", "noonan", "nooner", "nude", "nudger", "nuke",
-      "nutfucker", "nymph", "ontherag", "oral", "orga", "orgasim ",
-      "orgasm", "orgies", "orgy", "osama", "paki", "palesimian",
-      "palestinian", "pansies", "pansy", "panti", "panties", "payo",
-      "pearlnecklace", "peck", "pecker", "peckerwood", "pee", "peehole",
-      "pee-pee", "peepshow", "peepshpw", "pendy", "penetration", "peni5",
-      "penile", "penis", "penises", "penthouse", "period", "perv",
-      "phonesex", "phuk", "phuked", "phuking", "phukked", "phukking",
-      "phungky", "phuq", "pi55", "picaninny", "piccaninny", "pickaninny",
-      "piker", "pikey", "piky", "pimp", "pimped", "pimper", "pimpjuic",
-      "pimpjuice", "pimpsimp", "pindick", "piss", "pissed", "pisser",
-      "pisses ", "pisshead", "pissin ", "pissing", "pissoff ", "pistol",
-      "pixie", "pixy", "playboy", "playgirl", "pocha", "pocho",
-      "pocketpool", "pohm", "polack", "pom", "pommie", "pommy", "poo",
-      "poon", "poontang", "poop", "pooper", "pooperscooper", "pooping",
-      "poorwhitetrash", "popimp", "porchmonkey", "porn", "pornflick",
-      "pornking", "porno", "pornography", "pornprincess", "pot",
-      "poverty", "premature", "pric", "prick", "prickhead", "primetime",
-      "propaganda", "pros", "prostitute", "protestant", "pu55i", "pu55y",
-      "pube", "pubic", "pubiclice", "pud", "pudboy", "pudd", "puddboy",
-      "puke", "puntang", "purinapricness", "puss", "pussie", "pussies",
-      "pussy", "pussycat", "pussyeater", "pussyfucker", "pussylicker",
-      "pussylips", "pussylover", "pussypounder", "pusy", "quashie",
-      "queef", "queer", "quickie", "quim", "ra8s", "rabbi", "racial",
-      "racist", "radical", "radicals", "raghead", "randy", "rape",
-      "raped", "raper", "rapist", "rearend", "rearentry", "rectum",
-      "redlight", "redneck", "reefer", "reestie", "refugee", "reject",
-      "remains", "rentafuck", "republican", "rere", "retard", "retarded",
-      "ribbed", "rigger", "rimjob", "rimming", "roach", "robber",
-      "roundeye", "rump", "russki", "russkie", "sadis", "sadom",
-      "samckdaddy", "sandm", "sandnigger", "satan", "scag", "scallywag",
-      "scat", "schlong", "screw", "screwyou", "scrotum", "scum", "semen",
-      "seppo", "servant", "sex", "sexed", "sexfarm", "sexhound",
-      "sexhouse", "sexing", "sexkitten", "sexpot", "sexslave", "sextogo",
-      "sextoy", "sextoys", "sexual", "sexually", "sexwhore", "sexy",
-      "sexymoma", "sexy-slim", "shag", "shaggin", "shagging", "shat",
-      "shav", "shawtypimp", "sheeney", "shhit", "shinola", "shit",
-      "shitcan", "shitdick", "shite", "shiteater", "shited", "shitface",
-      "shitfaced", "shitfit", "shitforbrains", "shitfuck", "shitfucker",
-      "shitfull", "shithapens", "shithappens", "shithead", "shithouse",
-      "shiting", "shitlist", "shitola", "shitoutofluck", "shits",
-      "shitstain", "shitted", "shitter", "shitting", "shitty ", "shoot",
-      "shooting", "shortfuck", "showtime", "sick", "sissy", "sixsixsix",
-      "sixtynine", "sixtyniner", "skank", "skankbitch", "skankfuck",
-      "skankwhore", "skanky", "skankybitch", "skankywhore", "skinflute",
-      "skum", "skumbag", "slant", "slanteye", "slapper", "slaughter",
-      "slav", "slave", "slavedriver", "sleezebag", "sleezeball",
-      "slideitin", "slime", "slimeball", "slimebucket", "slopehead",
-      "slopey", "slopy", "slut", "sluts", "slutt", "slutting", "slutty",
-      "slutwear", "slutwhore", "smack", "smackthemonkey", "smut",
-      "snatch", "snatchpatch", "snigger", "sniggered", "sniggering",
-      "sniggers", "snigger's", "sniper", "snot", "snowback",
-      "snownigger", "sob", "sodom", "sodomise", "sodomite", "sodomize",
-      "sodomy", "sonofabitch", "sonofbitch", "sooty", "sos", "soviet",
-      "spaghettibender", "spaghettinigger", "spank", "spankthemonkey",
-      "sperm", "spermacide", "spermbag", "spermhearder", "spermherder",
-      "spic", "spick", "spig", "spigotty", "spik", "spit", "spitter",
-      "splittail", "spooge", "spreadeagle", "spunk", "spunky", "squaw",
-      "stagg", "stiffy", "strapon", "stringer", "stripclub", "stroke",
-      "stroking", "stupid", "stupidfuck", "stupidfucker", "suck",
-      "suckdick", "sucker", "suckme", "suckmyass", "suckmydick",
-      "suckmytit", "suckoff", "suicide", "swallow", "swallower",
-      "swalow", "swastika", "sweetness", "syphilis", "taboo", "taff",
-      "tampon", "tang", "tantra", "tarbaby", "tard", "teat", "terror",
-      "terrorist", "teste", "testicle", "testicles", "thicklips",
-      "thirdeye", "thirdleg", "threesome", "threeway", "timbernigger",
-      "tinkle", "tit", "titbitnipply", "titfuck", "titfucker",
-      "titfuckin", "titjob", "titlicker", "titlover", "tits", "tittie",
-      "titties", "titty", "tnt", "toilet", "tongethruster", "tongue",
-      "tonguethrust", "tonguetramp", "tortur", "torture", "tosser",
-      "towelhead", "trailertrash", "tramp", "trannie", "tranny",
-      "transexual", "transsexual", "transvestite", "triplex",
-      "trisexual", "trojan", "trots", "tuckahoe", "tunneloflove", "turd",
-      "turnon", "twat", "twink", "twinkie", "twobitwhore", "uck", "uk",
-      "unfuckable", "upskirt", "uptheass", "upthebutt", "urinary",
-      "urinate", "urine", "usama", "uterus", "vagina", "vaginal",
-      "vatican", "vibr", "vibrater", "vibrator", "vietcong", "violence",
-      "virgin", "virginbreaker", "vomit", "vulva", "wab", "wank",
-      "wanker", "wanking", "waysted", "weapon", "weenie", "weewee",
-      "welcher", "welfare", "wetb", "wetback", "wetspot", "whacker",
-      "whash", "whigger", "whiskey", "whiskeydick", "whiskydick", "whit",
-      "whitenigger", "whites", "whitetrash", "whitey", "whiz", "whop",
-      "whore", "whorefucker", "whorehouse", "wigger", "willie",
-      "williewanker", "willy", "wn", "wog", "women's", "wop", "wtf",
-      "wuss", "wuzzie", "xtc", "xxx", "yankee", "yellowman", "zigabo",
-      "zipperhead")
-
-  val tokens: List[String] = new ArrayList[String](Arrays.asList(luisVonAhnWordlist: _*))
-  val patternString: String = StringUtils.join(tokens, "|")
-  val pattern_badWord: Pattern = Pattern.compile(patternString)
-
-  def BadWordRation(str: String): Double = {
-    var results: Double = 0.0
-    var text: String = str
-    if (text != null) {
-      text = text.toLowerCase()
-      results = WordRatio(text, pattern_badWord)
-    }
-    results
-
-  }
-
-  //8. Contain Bad Word:It is ok
-  val tokens_containbadword: List[String] = new ArrayList[String](Arrays.asList(luisVonAhnWordlist: _*))
-  val patternString_containBadword: String = ".*\\b(" + StringUtils.join(tokens_containbadword, "|") + ")\\b.*"
-  val pattern_containBadword: Pattern = Pattern.compile(patternString, Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.DOTALL | Pattern.CANON_EQ)
-  val matcher_ContainBadWord: Matcher = pattern_containBadword.matcher("");
-  def containBadWord_word(str: String): Boolean = {
-    var results: Boolean = false
-    var text: String = str
-    if (text != null) {
-      results = matcher_ContainBadWord.reset(text).matches();
-    }
-
-    results
-
-  }
-
-  //9.Ban Builder Word:It is OK
-  val BanBuilderWordlist: Array[String] = Array("$#!+", "$1ut", "$h1t",
-    "$hit", "$lut", "'ho", "'hobag", "a$$", "anal", "anus", "ass",
-    "assmunch", "b1tch", "ballsack", "bastard", "beaner",
-    "beastiality", "biatch", "beeyotch", "bitch", "bitchy", "blow job",
-    "blow me", "blowjob", "bollock", "bollocks", "bollok", "boner",
-    "boob", "bugger", "buttplug", "c-0-c-k", "c-o-c-k", "c-u-n-t",
-    "c.0.c.k", "c.o.c.k.", "c.u.n.t", "jerk", "jackoff", "jackhole",
-    "j3rk0ff", "homo", "hom0", "hobag", "hell", "h0mo", "h0m0",
-    "goddamn", "goddammit", "godamnit", "god damn", "ghey", "ghay",
-    "gfy", "gay", "fudgepacker", "fudge packer", "fuckwad", "fucktard",
-    "fuckoff", "fucker", "fuck-tard", "fuck off", "fuck", "fellatio",
-    "fellate", "felching", "felcher", "felch", "fartknocker", "fart",
-    "fannybandit", "fanny bandit", "faggot", "fagg", "fag", "f.u.c.k",
-    "f-u-c-k", "f u c k", "dyke", "douchebag", "douche", "douch3",
-    "doosh", "dildo", "dike", "dick", "damnit", "damn", "dammit",
-    "d1ldo", "d1ld0", "d1ck", "d0uche", "d0uch3", "cunt", "cumstain",
-    "cum", "crap", "coon", "cock", "clitoris", "clit", "cl1t", "cawk",
-    "c0ck", "jerk0ff", "jerkoff", "jizz", "knob end", "knobend",
-    "labia", "lmfao", "moolie", "muff", "nigga", "nigger",
-    "p.u.s.s.y.", "penis", "piss", "piss-off", "pissoff", "prick",
-    "pube", "pussy", "queer", "retard", "retarded", "s hit", "s-h-1-t",
-    "s-h-i-t", "s.h.i.t.", "scrotum", "sex", "sh1t", "shit", "slut",
-    "smegma", "t1t", "tard", "terd", "tit", "tits", "titties", "turd",
-    "twat", "vag", "vagina", "wank", "wetback", "whore", "whoreface",
-    "F*ck", "sh*t", "pu$$y", "p*ssy", "diligaf", "wtf", "stfu",
-    "fu*ck", "fack", "shite", "fxck", "sh!t", "@sshole", "assh0le",
-    "assho!e", "a$$hole", "a$$h0le", "a$$h0!e", "a$$h01e", "assho1e",
-    "wh0re", "f@g", "f@gg0t", "f@ggot", "motherf*cker", "mofo",
-    "cuntlicker", "cuntface", "dickbag", "douche waffle", "jizz bag",
-    "cockknocker", "beatch", "fucknut", "nucking futs", "mams",
-    "carpet muncher", "ass munch", "ass hat", "cunny", "quim",
-    "clitty", "fuck wad", "kike", "spic", "wop", "chink", "wet back",
-    "mother humper", "feltch", "feltcher", "FvCk", "ahole", "nads",
-    "spick", "douchey", "Bullturds", "gonads", "bitch", "butt",
-    "fellatio", "lmao", "s-o-b", "spunk", "he11", "jizm", "jism",
-    "bukkake", "shiz", "wigger", "gook", "ritard", "reetard",
-    "masterbate", "masturbate", "goatse", "masterbating",
-    "masturbating", "hitler", "nazi", "tubgirl", "GTFO", "FOAD",
-    "r-tard", "rtard", "hoor", "g-spot", "gspot", "vulva", "assmaster",
-    "viagra", "Phuck", "frack", "fuckwit", "assbang", "assbanged",
-    "assbangs", "asshole", "assholes", "asswipe", "asswipes", "b1tch",
-    "bastards", "bitched", "bitches", "blow jobs", "boners",
-    "bullshit", "bullshits", "bullshitted", "cameltoe", "camel toe",
-    "camel toes", "chinc", "chincs", "chink", "chode", "chodes",
-    "clit", "clits", "cocks", "coons", "cumming", "cunts", "d1ck",
-    "dickhead", "dickheads", "doggie-style", "dildos", "douchebags",
-    "dumass", "dumb ass", "dumbasses", "dykes", "f-u-c-k", "faggit",
-    "fags", "fucked", "fucker", "fuckface", "fucks", "godamnit",
-    "gooks", "humped", "humping", "jackass", "jap", "japs", "jerk off",
-    "jizzed", "kikes", "knobend", "kooch", "kooches", "kootch",
-    "mother fucker", "mother fuckers", "motherfucking", "niggah",
-    "niggas", "niggers", "p.u.s.s.y.", "porch monkey", "porch monkeys",
-    "pussies", "queers", "rim job", "rim jobs", "sand nigger",
-    "sand niggers", "s0b", "shitface", "shithead", "shits", "shitted",
-    "s.o.b.", "spik", "spiks", "twats", "whack off", "whores",
-    "zoophile", "m-fucking", "mthrfucking", "muthrfucking",
-    "mutherfucking", "mutherfucker", "mtherfucker", "mthrfucker",
-    "mthrf*cker", "whorehopper", "maternal copulator", "(!)",
-    "whoralicious", "whorealicious", "( Y )", "(@ Y @)", "(. Y .)",
-    "aeolus", "Analprobe", "Areola", "areole", "aryan", "arian",
-    "asses", "assfuck", "azazel", "baal", "Babes", "bang", "banger",
-    "Barf", "bawdy", "Beardedclam", "beater", "Beaver", "beer",
-    "bigtits", "bimbo", "Blew", "blow", "blowjobs", "blowup", "bod",
-    "bodily", "boink", "Bone", "boned", "bong", "Boobies", "Boobs",
-    "booby", "booger", "Bookie", "Booky", "bootee", "bootie", "Booty",
-    "Booze", "boozer", "boozy", "bosom", "bosomy", "bowel", "bowels",
-    "bra", "Brassiere", "breast", "breasts", "bung", "babe", "bush",
-    "buttfuck", "cocaine", "kinky", "klan", "panties", "pedophile",
-    "pedophilia", "pedophiliac", "punkass", "queaf", "rape",
-    "scantily", "essohbee", "shithouse", "smut", "snatch", "toots",
-    "doggie style", "anorexia", "bulimia", "bulimiic", "burp", "busty",
-    "Buttfucker", "caca", "cahone", "Carnal", "Carpetmuncher",
-    "cervix", "climax", "Cocain", "Cocksucker", "Coital", "coke",
-    "commie", "condom", "corpse", "Coven", "Crabs", "crack",
-    "Crackwhore", "crappy", "cuervo", "Cummin", "Cumshot", "cumshots",
-    "Cunnilingus", "dago", "dagos", "damned", "dick-ish", "dickish",
-    "Dickweed", "anorexic", "prostitute", "marijuana", "LSD", "PCP",
-    "diddle", "dawgie-style", "dimwit", "dingle", "doofus", "dopey",
-    "douche", "Drunk", "Dummy", "Ejaculate", "enlargement", "erect",
-    "erotic", "exotic", "extacy", "Extasy", "faerie", "faery",
-    "fagged", "fagot", "Fairy", "fisted", "fisting", "Fisty", "floozy",
-    "fondle", "foobar", "foreskin", "frigg", "frigga", "fubar",
-    "Fucking", "fuckup", "ganja", "gays", "glans", "godamn", "goddam",
-    "Goldenshower", "gonad", "gonads", "Handjob", "hebe", "hemp",
-    "heroin", "herpes", "hijack", "Hiv", "Homey", "Honky", "hooch",
-    "hookah", "Hooker", "Hootch", "hooter", "hooters", "hump", "hussy",
-    "hymen", "inbred", "incest", "injun", "jerked", "Jiz", "Jizm",
-    "horny", "junkie", "junky", "kill", "kkk", "kraut", "kyke", "lech",
-    "leper", "lesbians", "lesbos", "Lez", "Lezbian", "lezbians",
-    "Lezbo", "Lezbos", "Lezzie", "Lezzies", "Lezzy", "loin", "loins",
-    "lube", "Lust", "lusty", "Massa", "Masterbation", "Masturbation",
-    "maxi", "Menses", "Menstruate", "Menstruation", "meth", "molest",
-    "moron", "Motherfucka", "Motherfucker", "murder", "Muthafucker",
-    "nad", "naked", "napalm", "Nappy", "nazism", "negro", "niggle",
-    "nimrod", "ninny", "Nipple", "nooky", "Nympho", "Opiate", "opium",
-    "oral", "orally", "organ", "orgasm", "orgies", "orgy", "ovary",
-    "ovum", "ovums", "Paddy", "pantie", "panty", "Pastie", "pasty",
-    "Pecker", "pedo", "pee", "Peepee", "Penetrate", "Penetration",
-    "penial", "penile", "perversion", "peyote", "phalli", "Phallic",
-    "Pillowbiter", "pimp", "pinko", "pissed", "pms", "polack", "porn",
-    "porno", "pornography", "pot", "potty", "prig", "prude", "pubic",
-    "pubis", "punky", "puss", "Queef", "quicky", "Racist", "racy",
-    "raped", "Raper", "rapist", "raunch", "rectal", "rectum", "rectus",
-    "reefer", "reich", "revue", "risque", "rum", "rump", "sadism",
-    "sadist", "satan", "scag", "schizo", "screw", "Screwed", "scrog",
-    "Scrot", "Scrote", "scrud", "scum", "seaman", "seamen", "seduce",
-    "semen", "sex_story", "sexual", "Shithole", "Shitter", "shitty",
-    "s*o*b", "sissy", "skag", "slave", "sleaze", "sleazy", "sluts",
-    "smutty", "sniper", "snuff", "sodom", "souse", "soused", "sperm",
-    "spooge", "Stab", "steamy", "Stiffy", "stoned", "strip", "Stroke",
-    "whacking off", "suck", "sucked", "sucking", "tampon", "tawdry",
-    "teat", "teste", "testee", "testes", "Testis", "thrust", "thug",
-    "tinkle", "Titfuck", "titi", "titty", "whacked off", "toke",
-    "tramp", "trashy", "tush", "undies", "unwed", "urinal", "urine",
-    "uterus", "uzi", "valium", "virgin", "vixen", "vodka", "vomit",
-    "voyeur", "vulgar", "wad", "wazoo", "wedgie", "weed", "weenie",
-    "weewee", "weiner", "weirdo", "wench", "whitey", "whiz", "Whored",
-    "Whorehouse", "Whoring", "womb", "woody", "x-rated", "xxx",
-    "B@lls", "yeasty", "yobbo", "sumofabiatch", "doggy-style",
-    "doggy style", "wang", "dong", "d0ng", "w@ng", "wh0reface",
-    "wh0ref@ce", "wh0r3f@ce", "tittyfuck", "tittyfucker",
-    "tittiefucker", "cockholster", "cockblock", "gai", "gey", "faig",
-    "faigt", "a55", "a55hole", "gae", "corksucker", "rumprammer",
-    "slutdumper", "niggaz", "muthafuckaz", "gigolo", "pussypounder",
-    "herp", "herpy", "transsexual", "gender dysphoria", "orgasmic",
-    "cunilingus", "anilingus", "dickdipper", "dickwhipper",
-    "dicksipper", "dickripper", "dickflipper", "dickzipper", "homoey",
-    "queero", "freex", "cunthunter", "shamedame", "slutkiss",
-    "shiteater", "slut devil", "fuckass", "fucka$$", "clitorus",
-    "assfucker", "dillweed", "cracker", "teabagging", "shitt", "azz",
-    "fuk", "fucknugget", "cuntlick", "g@y", "@ss", "beotch")
-
-  val tokens_banBuilder: List[String] = new ArrayList[String](Arrays.asList(BanBuilderWordlist: _*))
-  val patternString_banBuilder: String = ".*\\b(" + StringUtils.join(tokens_banBuilder, "|") + ")\\b.*"
-  val pattern_banBuilder: Pattern = Pattern.compile(patternString_banBuilder, Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.DOTALL | Pattern.CANON_EQ)
-  val matcher_BanBuilder: Matcher = pattern_banBuilder.matcher("");
-  def BanBuilderWordlist_word(str: String): Boolean = {
-
-    var results: Boolean = false
-    var text: String = str
-    if (text != null) {
-      results = matcher_BanBuilder.reset(text).matches();
-    }
-
-    results
-
-  }
-  //10 Ban word Ratio:
-  val tokens_ban: List[String] = new ArrayList[String](Arrays.asList(BanBuilderWordlist: _*))
-  val patternString_ban: String = StringUtils.join(tokens_ban, "|")
-  val pattern_banWord: Pattern = Pattern.compile(patternString_ban)
-
-  def BanWordRation(str: String): Double = {
-    var results: Double = 0.0
-    var text: String = str
-    if (text != null) {
-      text = text.toLowerCase()
-      results = WordRatio(text, pattern_banWord)
-    }
-    results
-
-  }
-
-  //11.Contain language word:It is ok
-  val regex_containLanguageWord: String = ".*(a(frikaa?ns|lbanian?|lemanha|ng(lais|ol)|ra?b(e?|[ei]c|ian?|isc?h)|rmenian?|ssamese|azeri|z[e\\u0259]rba(ijani?|ycan(ca)?|yjan)|\\u043d\\u0433\\u043b\\u0438\\u0439\\u0441\\u043a\\u0438\\u0439)|b(ahasa( (indonesia|jawa|malaysia|melayu))?|angla|as(k|qu)e|[aeo]ng[ao]?li|elarusian?|okm\\u00e5l|osanski|ra[sz]il(ian?)?|ritish( kannada)?|ulgarian?)|c(ebuano|hina|hinese( simplified)?|zech|roat([eo]|ian?)|atal[a\\u00e0]n?|\\u0440\\u043f\\u0441\\u043a\\u0438|antonese)|[c\\u010d](esky|e[s\\u0161]tina)\r\n|d(an(isc?h|sk)|e?uts?ch)|e(esti|ll[hi]nika|ng(els|le(ski|za)|lisc?h)|spa(g?[n\\u00f1]h?i?ol|nisc?h)|speranto|stonian|usk[ae]ra)|f(ilipino|innish|ran[c\\u00e7](ais|e|ez[ao])|ren[cs]h|arsi|rancese)|g(al(ego|ician)|uja?rati|ree(ce|k)|eorgian|erman[ay]?|ilaki)|h(ayeren|ebrew|indi|rvatski|ungar(y|ian))|i(celandic|ndian?|ndonesian?|ngl[e\\u00ea]se?|ngilizce|tali(ano?|en(isch)?))|ja(pan(ese)?|vanese)|k(a(nn?ada|zakh)|hmer|o(rean?|sova)|urd[i\\u00ee])|l(at(in[ao]?|vi(an?|e[s\\u0161]u))|ietuvi[u\\u0173]|ithuanian?)|m(a[ck]edon(ian?|ski)|agyar|alay(alam?|sian?)?|altese|andarin|arathi|elayu|ontenegro|ongol(ian?)|yanmar)|n(e(d|th)erlands?|epali|orw(ay|egian)|orsk( bokm[a\\u00e5]l)?|ynorsk)|o(landese|dia)|p(ashto|ersi?an?|ol(n?isc?h|ski)|or?tugu?[e\\u00ea]se?(( d[eo])? brasil(eiro)?| ?\\(brasil\\))?|unjabi)|r(om[a\\u00e2i]ni?[a\\u0103]n?|um(ano|\\u00e4nisch)|ussi([ao]n?|sch))|s(anskrit|erbian|imple english|inha?la|lov(ak(ian?)?|en\\u0161?[c\\u010d]ina|en(e|ij?an?)|uomi)|erbisch|pagnolo?|panisc?h|rbeska|rpski|venska|c?wedisc?h|hqip)|t(a(galog|mil)|elugu|hai(land)?|i[e\\u1ebf]ng vi[e\\u1ec7]t|[u\\u00fc]rk([c\\u00e7]e|isc?h|i\\u015f|ey))|u(rdu|zbek)|v(alencia(no?)?|ietnamese)|welsh|(\\u0430\\u043d\\u0433\\u043b\\u0438\\u0438\\u0441|[k\\u043a]\\u0430\\u043b\\u043c\\u044b\\u043a\\u0441|[k\\u043a]\\u0430\\u0437\\u0430\\u0445\\u0441|\\u043d\\u0435\\u043c\\u0435\\u0446|[p\\u0440]\\u0443\\u0441\\u0441|[y\\u0443]\\u0437\\u0431\\u0435\\u043a\\u0441)\\u043a\\u0438\\u0439( \\u044f\\u0437\\u044b\\u043a)??|\\u05e2\\u05d1\\u05e8\\u05d9\\u05ea|[k\\u043a\\u049b](\\u0430\\u0437\\u0430[\\u043a\\u049b]\\u0448\\u0430|\\u044b\\u0440\\u0433\\u044b\\u0437\\u0447\\u0430|\\u0438\\u0440\\u0438\\u043b\\u043b)|\\u0443\\u043a\\u0440\\u0430\\u0457\\u043d\\u0441\\u044c\\u043a(\\u0430|\\u043e\\u044e)|\\u0431(\\u0435\\u043b\\u0430\\u0440\\u0443\\u0441\\u043a\\u0430\\u044f|\\u044a\\u043b\\u0433\\u0430\\u0440\\u0441\\u043a\\u0438( \\u0435\\u0437\\u0438\\u043a)?)|\\u03b5\\u03bb\\u03bb[\\u03b7\\u03b9]\\u03bd\\u03b9\\u03ba(\\u03ac|\\u03b1)|\\u10e5\\u10d0\\u10e0\\u10d7\\u10e3\\u10da\\u10d8|\\u0939\\u093f\\u0928\\u094d\\u0926\\u0940|\\u0e44\\u0e17\\u0e22|[m\\u043c]\\u043e\\u043d\\u0433\\u043e\\u043b(\\u0438\\u0430)?|([c\\u0441]\\u0440\\u043f|[m\\u043c]\\u0430\\u043a\\u0435\\u0434\\u043e\\u043d)\\u0441\\u043a\\u0438|\\u0627\\u0644\\u0639\\u0631\\u0628\\u064a\\u0629|\\u65e5\\u672c\\u8a9e|\\ud55c\\uad6d(\\ub9d0|\\uc5b4)|\\u200c\\u0939\\u093f\\u0928\\u0926\\u093c\\u093f|\\u09ac\\u09be\\u0982\\u09b2\\u09be|\\u0a2a\\u0a70\\u0a1c\\u0a3e\\u0a2c\\u0a40|\\u092e\\u0930\\u093e\\u0920\\u0940|\\u0c95\\u0ca8\\u0ccd\\u0ca8\\u0ca1|\\u0627\\u064f\\u0631\\u062f\\u064f\\u0648|\\u0ba4\\u0bae\\u0bbf\\u0bb4\\u0bcd|\\u0c24\\u0c46\\u0c32\\u0c41\\u0c17\\u0c41|\\u0a97\\u0ac1\\u0a9c\\u0ab0\\u0abe\\u0aa4\\u0ac0|\\u0641\\u0627\\u0631\\u0633\\u06cc|\\u067e\\u0627\\u0631\\u0633\\u06cc|\\u0d2e\\u0d32\\u0d2f\\u0d3e\\u0d33\\u0d02|\\u067e\\u069a\\u062a\\u0648|\\u1019\\u103c\\u1014\\u103a\\u1019\\u102c\\u1018\\u102c\\u101e\\u102c|\\u4e2d\\u6587(\\u7b80\\u4f53|\\u7e41\\u9ad4)?|\\u4e2d\\u6587\\uff08(\\u7b80\\u4f53?|\\u7e41\\u9ad4)\\uff09|\\u7b80\\u4f53|\\u7e41\\u9ad4).*";
-  val pattern_forContainLanguageWord: Pattern = Pattern.compile(regex_containLanguageWord);
-  val matcher_containLanguageWord: Matcher = pattern_forContainLanguageWord.matcher("");
-  def containLanguageBadWord_word(str: String): Boolean = {
-    var results: Boolean = false
-    var text: String = str
-    if (text != null) {
-      text = text.trim();
-      text = text.toLowerCase();
-      results = matcher_containLanguageWord.reset(text).matches();
-    }
-    results
-  }
-
-  //12. Male Names: It is ok
-  val MaleNames: Array[String] = Array("AARON", "ADAM", "ADRIAN",
-    "ALAN", "ALBERT", "ALBERTO", "ALEX", "ALEXANDER", "ALFRED",
-    "ALFREDO", "ALLAN", "ALLEN", "ALVIN", "ANDRE", "ANDREW", "ANDY",
-    "ANGEL", "ANTHONY", "ANTONIO", "ARMANDO", "ARNOLD", "ARTHUR",
-    "BARRY", "BEN", "BENJAMIN", "BERNARD", "BILL", "BILLY", "BOB",
-    "BOBBY", "BRAD", "BRADLEY", "BRANDON", "BRENT", "BRETT", "BRIAN",
-    "BRUCE", "BRYAN", "BYRON", "CALVIN", "CARL", "CARLOS", "CASEY",
-    "CECIL", "CHAD", "CHARLES", "CHARLIE", "CHESTER", "CHRIS",
-    "CHRISTIAN", "CHRISTOPHER", "CLARENCE", "CLAUDE", "CLAYTON",
-    "CLIFFORD", "CLIFTON", "CLINTON", "CLYDE", "CODY", "COREY", "CORY",
-    "CRAIG", "CURTIS", "DALE", "DAN", "DANIEL", "DANNY", "DARRELL",
-    "DARREN", "DARRYL", "DARYL", "DAVE", "DAVID", "DEAN", "DENNIS",
-    "DEREK", "DERRICK", "DON", "DONALD", "DOUGLAS", "DUANE", "DUSTIN",
-    "DWAYNE", "DWIGHT", "EARL", "EDDIE", "EDGAR", "EDUARDO", "EDWARD",
-    "EDWIN", "ELMER", "ENRIQUE", "ERIC", "ERIK", "ERNEST", "EUGENE",
-    "EVERETT", "FELIX", "FERNANDO", "FLOYD", "FRANCIS", "FRANCISCO",
-    "FRANK", "FRANKLIN", "FRED", "FREDDIE", "FREDERICK", "GABRIEL",
-    "GARY", "GENE", "GEORGE", "GERALD", "GILBERT", "GLEN", "GLENN",
-    "GORDON", "GREG", "GREGORY", "GUY", "HAROLD", "HARRY", "HARVEY",
-    "HECTOR", "HENRY", "HERBERT", "HERMAN", "HOWARD", "HUGH", "IAN",
-    "ISAAC", "IVAN", "JACK", "JACOB", "JAIME", "JAMES", "JAMIE",
-    "JARED", "JASON", "JAVIER", "JAY", "JEFF", "JEFFERY", "JEFFREY",
-    "JEREMY", "JEROME", "JERRY", "JESSE", "JESSIE", "JESUS", "JIM",
-    "JIMMIE", "JIMMY", "JOE", "JOEL", "JOHN", "JOHNNIE", "JOHNNY",
-    "JON", "JONATHAN", "JORDAN", "JORGE", "JOSE", "JOSEPH", "JOSHUA",
-    "JUAN", "JULIAN", "JULIO", "JUSTIN", "KARL", "KEITH", "KELLY",
-    "KEN", "KENNETH", "KENT", "KEVIN", "KIRK", "KURT", "KYLE", "LANCE",
-    "LARRY", "LAWRENCE", "LEE", "LEO", "LEON", "LEONARD", "LEROY",
-    "LESLIE", "LESTER", "LEWIS", "LLOYD", "LONNIE", "LOUIS", "LUIS",
-    "MANUEL", "MARC", "MARCUS", "MARIO", "MARION", "MARK", "MARSHALL",
-    "MARTIN", "MARVIN", "MATHEW", "MATTHEW", "MAURICE", "MAX",
-    "MELVIN", "MICHAEL", "MICHEAL", "MIGUEL", "MIKE", "MILTON",
-    "MITCHELL", "MORRIS", "NATHAN", "NATHANIEL", "NEIL", "NELSON",
-    "NICHOLAS", "NORMAN", "OSCAR", "PATRICK", "PAUL", "PEDRO", "PERRY",
-    "PETER", "PHILIP", "PHILLIP", "RAFAEL", "RALPH", "RAMON",
-    "RANDALL", "RANDY", "RAUL", "RAY", "RAYMOND", "REGINALD", "RENE",
-    "RICARDO", "RICHARD", "RICK", "RICKY", "ROBERT", "ROBERTO",
-    "RODNEY", "ROGER", "ROLAND", "RON", "RONALD", "RONNIE", "ROSS",
-    "ROY", "RUBEN", "RUSSELL", "RYAN", "SALVADOR", "SAM", "SAMUEL",
-    "SCOTT", "SEAN", "SERGIO", "SETH", "SHANE", "SHAWN", "SIDNEY",
-    "STANLEY", "STEPHEN", "STEVE", "STEVEN", "TED", "TERRANCE",
-    "TERRENCE", "TERRY", "THEODORE", "THOMAS", "TIM", "TIMOTHY",
-    "TODD", "TOM", "TOMMY", "TONY", "TRACY", "TRAVIS", "TROY", "TYLER",
-    "TYRONE", "VERNON", "VICTOR", "VINCENT", "VIRGIL", "WADE",
-    "WALLACE", "WALTER", "WARREN", "WAYNE", "WESLEY", "WILLARD",
-    "WILLIAM", "WILLIE", "ZACHARY")
-
-  val tokens_maleName: List[String] = new ArrayList[String](Arrays.asList(MaleNames: _*))
-  val patternString_MaleName: String = ".*\\b(" + StringUtils.join(tokens_maleName, "|") + ")\\b.*"
-  val pattern_MaleName: Pattern = Pattern.compile(patternString_MaleName, Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.DOTALL | Pattern.CANON_EQ);
-  val matcher_MaleName: Matcher = pattern_MaleName.matcher("");
-
-  def MaleName_word(str: String): Boolean = {
-
-    var results: Boolean = false
-    var text: String = str
-    if (text != null) {
-      results = matcher_MaleName.reset(text).matches();
-    }
-
-    results
-
-  }
-
-  //13. Female Names: It is ok
-  val FemaleNames: Array[String] = Array("AGNES", "ALICE",
-    "ALICIA", "ALLISON", "ALMA", "AMANDA", "AMBER", "AMY", "ANA",
-    "ANDREA", "ANGELA", "ANITA", "ANN", "ANNA", "ANNE", "ANNETTE",
-    "ANNIE", "APRIL", "ARLENE", "ASHLEY", "AUDREY", "BARBARA",
-    "BEATRICE", "BECKY", "BERNICE", "BERTHA", "BESSIE", "BETH",
-    "BETTY", "BEVERLY", "BILLIE", "BOBBIE", "BONNIE", "BRANDY",
-    "BRENDA", "BRITTANY", "CARLA", "CARMEN", "CAROL", "CAROLE",
-    "CAROLINE", "CAROLYN", "CARRIE", "CASSANDRA", "CATHERINE", "CATHY",
-    "CHARLENE", "CHARLOTTE", "CHERYL", "CHRISTINA", "CHRISTINE",
-    "CHRISTY", "CINDY", "CLAIRE", "CLARA", "CLAUDIA", "COLLEEN",
-    "CONNIE", "CONSTANCE", "COURTNEY", "CRYSTAL", "CYNTHIA", "DAISY",
-    "DANA", "DANIELLE", "DARLENE", "DAWN", "DEANNA", "DEBBIE",
-    "DEBORAH", "DEBRA", "DELORES", "DENISE", "DIANA", "DIANE",
-    "DIANNE", "DOLORES", "DONNA", "DORA", "DORIS", "DOROTHY", "EDITH",
-    "EDNA", "EILEEN", "ELAINE", "ELEANOR", "ELIZABETH", "ELLA",
-    "ELLEN", "ELSIE", "EMILY", "EMMA", "ERICA", "ERIKA", "ERIN",
-    "ESTHER", "ETHEL", "EVA", "EVELYN", "FELICIA", "FLORENCE",
-    "FRANCES", "GAIL", "GEORGIA", "GERALDINE", "GERTRUDE", "GINA",
-    "GLADYS", "GLENDA", "GLORIA", "GRACE", "GWENDOLYN", "HAZEL",
-    "HEATHER", "HEIDI", "HELEN", "HILDA", "HOLLY", "IDA", "IRENE",
-    "IRMA", "JACKIE", "JACQUELINE", "JAMIE", "JANE", "JANET", "JANICE",
-    "JEAN", "JEANETTE", "JEANNE", "JENNIE", "JENNIFER", "JENNY",
-    "JESSICA", "JESSIE", "JILL", "JO", "JOAN", "JOANN", "JOANNE",
-    "JOSEPHINE", "JOY", "JOYCE", "JUANITA", "JUDITH", "JUDY", "JULIA",
-    "JULIE", "JUNE", "KAREN", "KATHERINE", "KATHLEEN", "KATHRYN",
-    "KATHY", "KATIE", "KATRINA", "KAY", "KELLY", "KIM", "KIMBERLY",
-    "KRISTEN", "KRISTIN", "KRISTINA", "LAURA", "LAUREN", "LAURIE",
-    "LEAH", "LENA", "LEONA", "LESLIE", "LILLIAN", "LILLIE", "LINDA",
-    "LISA", "LOIS", "LORETTA", "LORI", "LORRAINE", "LOUISE", "LUCILLE",
-    "LUCY", "LYDIA", "LYNN", "MABEL", "MAE", "MARCIA", "MARGARET",
-    "MARGIE", "MARIA", "MARIAN", "MARIE", "MARILYN", "MARION",
-    "MARJORIE", "MARLENE", "MARSHA", "MARTHA", "MARY", "MATTIE",
-    "MAUREEN", "MAXINE", "MEGAN", "MELANIE", "MELINDA", "MELISSA",
-    "MICHELE", "MICHELLE", "MILDRED", "MINNIE", "MIRIAM", "MISTY",
-    "MONICA", "MYRTLE", "NANCY", "NAOMI", "NATALIE", "NELLIE",
-    "NICOLE", "NINA", "NORA", "NORMA", "OLGA", "PAMELA", "PATRICIA",
-    "PATSY", "PAULA", "PAULINE", "PEARL", "PEGGY", "PENNY", "PHYLLIS",
-    "PRISCILLA", "RACHEL", "RAMONA", "REBECCA", "REGINA", "RENEE",
-    "RHONDA", "RITA", "ROBERTA", "ROBIN", "ROSA", "ROSE", "ROSEMARY",
-    "RUBY", "RUTH", "SALLY", "SAMANTHA", "SANDRA", "SARA", "SARAH",
-    "SHANNON", "SHARON", "SHEILA", "SHELLY", "SHERRI", "SHERRY",
-    "SHIRLEY", "SONIA", "STACEY", "STACY", "STELLA", "STEPHANIE",
-    "SUE", "SUSAN", "SUZANNE", "SYLVIA", "TAMARA", "TAMMY", "TANYA",
-    "TARA", "TERESA", "TERRI", "TERRY", "THELMA", "THERESA", "TIFFANY",
-    "TINA", "TONI", "TONYA", "TRACEY", "TRACY", "VALERIE", "VANESSA",
-    "VELMA", "VERA", "VERONICA", "VICKI", "VICKIE", "VICTORIA",
-    "VIOLA", "VIOLET", "VIRGINIA", "VIVIAN", "WANDA", "WENDY",
-    "WILLIE", "WILMA", "YOLANDA", "YVONNE")
-
-  val tokens_FemaleName: List[String] = new ArrayList[String](Arrays.asList(FemaleNames: _*))
-  val patternString_FemaleName: String = ".*\\b(" + StringUtils.join(tokens_FemaleName, "|") + ")\\b.*"
-  val pattern_FeMaleName: Pattern = Pattern.compile(patternString_FemaleName, Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.DOTALL | Pattern.CANON_EQ);
-  val matcher_FeMaleName: Matcher = pattern_FeMaleName.matcher("");
-
-  def FemaleName_word(str: String): Boolean = {
-
-    var results: Boolean = false
-    var text: String = str
-    if (text != null) {
-      results = matcher_FeMaleName.reset(text).matches();
-    }
-
-    results
-
-  }
-
-  // Words features: ------ End calculation the Ratio for Words:
-  // sentence feature:------Start calculation:
-
-  // sentence feature:--------End calculation:
-  //Extract ID revision from tag Tag:
-  def Get_ID_Revision(str: String): ArrayList[String] = {
-
-    val IDRevision_Step1: ArrayList[String] = new ArrayList[String]()
-    val IDRevision: ArrayList[String] = new ArrayList[String]()
-    val inputID: CharSequence = str
-    val pattStr_id: String = "<revision><id>.*<timestamp>"
-    val p_id: Pattern = Pattern.compile(pattStr_id)
-    val m_id: Matcher = p_id.matcher(inputID)
-    while ((m_id.find())) {
-      val repID: String = m_id.group()
-      IDRevision_Step1.add(repID)
-    }
-    val inputID2: CharSequence = IDRevision_Step1.get(0).toString()
-    val pattStr_id2: String = "<revision><id>.*</id>"
-    val p_id2: Pattern = Pattern.compile(pattStr_id2)
-    val m_id2: Matcher = p_id2.matcher(inputID2)
-    while ((m_id2.find())) {
-      val repID2: String = m_id2.group()
-      val str1 = repID2.replace("<revision><id>", "")
-      val str2 = str1.replace("</id>", "").trim()
-
-      IDRevision.add(str2)
-    }
-
-    IDRevision
-  }
-  //Extract TimeStampe value from  Tag:
-  def Get_TIMEStamp(str: String): ArrayList[String] = {
-
-    val TimeStamp: ArrayList[String] = new ArrayList[String]()
-    val inputTime: CharSequence = str
-    val pattStr_time: String = "<timestamp>.*</timestamp>"
-    val p_time: Pattern = Pattern.compile(pattStr_time)
-    val m_time: Matcher = p_time.matcher(inputTime)
-    while ((m_time.find())) {
-      val repTime: String = m_time.group()
-      val cleaned_value1 = repTime.replace("<timestamp>", "")
-      val cleaned_value2 = cleaned_value1.replace("</timestamp>", "").trim()
-      TimeStamp.add(cleaned_value2)
-    }
-    TimeStamp
-  }
-  // extract Json tage from the string object
-  def Get_Json_Revision(str: String): ArrayList[String] = {
-
-    val JsonRevision: ArrayList[String] = new ArrayList[String]()
-    val inputJsonStr: CharSequence = str
-    val pattStr_JsonStr: String = "</format>.*<sha1>"
-    val p_JsonStr: Pattern = Pattern.compile(pattStr_JsonStr)
-    val m_Jsonstr: Matcher = p_JsonStr.matcher(inputJsonStr)
-    while ((m_Jsonstr.find())) {
-      val replabels: String = m_Jsonstr.group()
-      val cleaned_value1 = replabels.replace("{", "")
-      val cleaned_value2 = cleaned_value1.replace("}", "")
-      val cleaned_value3 = cleaned_value2.replace("\"", "")
-      val cleaned_value4 = cleaned_value3.replace("</format><textxml:space=preserve>", "")
-      val cleaned_value5 = cleaned_value4.replace("<sha1>", "")
-      JsonRevision.add(cleaned_value5)
-    }
-
-    JsonRevision
-
-  }
-
-  //extract Item ID from Json string
-  def Get_Item_ID_FromJson(str: String): String = {
-
-    val ID_Item_FromJason: ArrayList[String] = new ArrayList[String]()
-    var x = ""
-    val mystr = cleaner(str)
-    val inputJsonStr: CharSequence = mystr
-    val pattStr_JsonStr: String = "id:.*,labels"
-    val p_JsonStr: Pattern = Pattern.compile(pattStr_JsonStr)
-    val m_Jsonstr: Matcher = p_JsonStr.matcher(inputJsonStr)
-    if ((m_Jsonstr.find())) {
-      val replabels: String = m_Jsonstr.group()
-      val cleaned_value1 = replabels.replace(",labels", "")
-      val cleaned_value2 = cleaned_value1.replace("id:", "")
-      ID_Item_FromJason.add(cleaned_value2)
-      x = cleaned_value2
-
-    } else {
-
-      x = "NA"
-    }
-    x
-
-  }
-
-  // extract Pairs Labels values from Json String
-  def Get_Labels_FromJson(str: String): ArrayList[String] = {
-
-    val list_pairs_fromlabels: ArrayList[String] = new ArrayList[String]()
-    val inputJsonStr: CharSequence = str
-    val pattStr_Label: String = "labels:.*,descriptions"
-    val p_label: Pattern = Pattern.compile(pattStr_Label)
-    val m_label: Matcher = p_label.matcher(inputJsonStr)
-    while ((m_label.find())) {
-      val replabels: String = m_label.group()
-      val cleaned_value1 = replabels.replace("labels:", "").trim()
-      val cleaned_value2 = cleaned_value1.replace(",descriptions", "").trim()
-      list_pairs_fromlabels.add(cleaned_value2)
-
-    }
-    list_pairs_fromlabels
-  }
-  //extract Description from Json File
-  def Get_Descri_FromJson(str: String): ArrayList[String] = {
-
-    val list_pairs_fromDescrip: ArrayList[String] = new ArrayList[String]()
-    val inputDescription: CharSequence = str
-    val pattStr_desc: String = "descriptions:.*,aliases"
-    val p_desc: Pattern = Pattern.compile(pattStr_desc)
-    val m_desc: Matcher = p_desc.matcher(inputDescription)
-    while ((m_desc.find())) {
-      val repdesc: String = m_desc.group()
-      val cleaned_value1 = repdesc.replace("descriptions:", "").trim()
-      val cleaned_value2 = cleaned_value1.replace(",aliases", "").trim()
-      if (cleaned_value2 == "[]") {
-        list_pairs_fromDescrip.add("NA")
-
-      } else {
-        list_pairs_fromDescrip.add(cleaned_value2)
-      }
-    }
-    list_pairs_fromDescrip
-  }
-  // extract Aliases from Json String
-  def Get_Alias_FromJson(str: String): ArrayList[String] = {
-
-    val list_pairs_fromAliases: ArrayList[String] = new ArrayList[String]()
-    val inputDescription: CharSequence = str
-    val pattStr_desc: String = "aliases:.*,claims"
-    val p_desc: Pattern = Pattern.compile(pattStr_desc)
-    val m_desc: Matcher = p_desc.matcher(inputDescription)
-    while ((m_desc.find())) {
-      val repdesc: String = m_desc.group()
-      val cleaned_value1 = repdesc.replace("aliases:", "").trim()
-      val cleaned_value2 = cleaned_value1.replace(",claims", "").trim()
-
-      if (cleaned_value2 == "[]") {
-        list_pairs_fromAliases.add("NA")
-
-      } else {
-        list_pairs_fromAliases.add(cleaned_value2)
-      }
-
-    }
-
-    list_pairs_fromAliases
-
-  }
-
-  def Get_Contributor(str: String): String = {
-    val reg_contributer = "<contributor><username>.*</username><id>.*</id></contributor>"
-    val startIndex3 = str.indexOf("<contributor>");
-    val endIndex3 = str.indexOf("</contributor>");
-    val result_contributor = str.substring(startIndex3 + 1, endIndex3);
-    if (result_contributor == null || result_contributor.isEmpty()) {
-      val error = "Error1 in String for  Contributor is Empty or Null"
-      error
-    } else {
-      val contributor_Revision = result_contributor.substring(12).trim()
-      contributor_Revision
-    }
-  }
-  def Get_User_NameofRevisionFromcontributor(str: String): String = {
-    // user name Revision
-    val startIndex4 = str.indexOf("<username>");
-    val endIndex4 = str.indexOf("</username>");
-    val result_contributor_UserName = str.substring(startIndex4 + 1, endIndex4);
-    if (result_contributor_UserName == null || result_contributor_UserName.isEmpty()) {
-      val error = "Error1 in String for UseName Contributor is Empty or Null"
-      error
-    } else {
-      val UserName_Revision = result_contributor_UserName.substring(9).trim()
-      UserName_Revision
-    }
-
-  }
-  def Get_Id_UserName_OfRevisionFromContributor(str: String): String = {
-
-    val startIndex5 = str.indexOf("<id>");
-    val endIndex5 = str.indexOf("</id>");
-    val result_Id_UserName = str.substring(startIndex5 + 1, endIndex5);
-
-    if (result_Id_UserName == null || result_Id_UserName.isEmpty()) {
-      val error = "Error1 in String for Id User of revision is Empty or Null"
-      error
-    } else {
-
-      val Id_user_Revision = result_Id_UserName.substring(3).trim()
-      Id_user_Revision
-    }
-  }
-  def Get_Comment(str: String): ArrayList[String] = {
-
-    val comment: ArrayList[String] = new ArrayList[String]()
-    val inputComment: CharSequence = str
-    val pattStr_comment: String = "<comment>.*</comment>"
-    val p_comment: Pattern = Pattern.compile(pattStr_comment)
-    val m_comment: Matcher = p_comment.matcher(inputComment)
-    while ((m_comment.find())) {
-      val repcomment: String = m_comment.group()
-      val cleaned_value1 = repcomment.replace("<comment>", "").trim()
-      val cleaned_value2 = cleaned_value1.replace("</comment>", "").trim()
-
-      comment.add(cleaned_value2)
-
-    }
-    comment
-  }
-
-  // FlatMap the content of arraylist in multi string lines :
-  def AbendArrayListinOneString(arrList: ArrayList[String]): String = {
-
-    var temp: String = ""
-    for (j <- 0 until arrList.size()) {
-      temp = temp + " " + arrList.get(j).toString().trim()
-    }
-    temp
-  }
-  // Build Map revision that includes all info of Revision
-  def build_Revision_Map(obj: String): ArrayList[String] = {
-
-    val Map_Revision: ArrayList[String] = new ArrayList[String]()
-    val Message: ArrayList[String] = new ArrayList[String]()
-
-    // Id Revision
-    val IdRevision = Get_ID_Revision(obj)
-    val ID = IdRevision.get(0).toString()
-    //=============Start:======= extract information from the json string
-    //Json Revision :
-    val JsonStr = Get_Json_Revision(obj)
-    val Json = JsonStr.get(0).toString()
-
-    //1. ID Item
-    val IdItemArray = Get_Item_ID_FromJson(Json)
-    //      val IdItem = IdItemArray.get(0).toString().trim()
-    val element = ID + "::" + "id_Item" + "::" + IdItemArray
-    Map_Revision.add(element)
-    //2. Labels Array becuase the lables sometime take multi value with  multi languages
-    val Labels: ArrayList[String] = Get_Labels_FromJson(Json)
-    if (Labels.size() > 0) {
-      val groupLabels = Labels.get(0).toString()
-      val inputlabels2: CharSequence = groupLabels
-      val pattStr_labels2: String = "(language:[A-Za-z]+,value:[A-Za-z]+)"
-      val p_labels2: Pattern = Pattern.compile(pattStr_labels2)
-      val m_labels2: Matcher = p_labels2.matcher(inputlabels2)
-      var i = 1
-      while ((m_labels2.find())) {
-        val replabels2: String = m_labels2.group()
-        val parts: Array[String] = replabels2.split(":", 2)
-        val pairs = parts(1)
-        val pairValue: Array[String] = pairs.split(":", 2)
-        val finalvalue = pairValue(1)
-        val element = ID + "::" + "labels_Value" + (i) + "::" + finalvalue
-        Map_Revision.add(element)
-        i = i + 1
-      }
-    } else {
-
-      val element = ID + "::" + "labels_Value" + "::" + "NA"
-      Map_Revision.add(element)
-
-    }
-    //3. descriptions
-    val Description: ArrayList[String] = Get_Descri_FromJson(Json)
-    if (Description.size() > 0) {
-      if (Description.get(0) != "NA") {
-        val groupDescription = Description.get(0).toString()
-        val inputdescrip: CharSequence = groupDescription
-        val pattStr_Descrip: String = "(language:[A-Za-z]+,value:[A-Za-z]+)"
-        val p_Description: Pattern = Pattern.compile(pattStr_Descrip)
-        val m_Description: Matcher = p_Description.matcher(inputdescrip)
-        var i = 1
-        while ((m_Description.find())) {
-          val replabels2: String = m_Description.group()
-          val parts: Array[String] = replabels2.split(":", 2)
-          val pairs = parts(1)
-          val pairValue: Array[String] = pairs.split(":", 2)
-          val finalvalue = pairValue(1)
-          val element = ID + "::" + "descriptions_Value" + (i) + "::" + finalvalue
-          Map_Revision.add(element)
-          i = i + 1;
-        }
-      } else {
-        val element = ID + "::" + "descriptions_Value" + "::" + "NA"
-        Map_Revision.add(element)
-      }
-
-    }
-    //4. aliases:
-    val Aliases: ArrayList[String] = Get_Alias_FromJson(Json)
-    if (Aliases.size() > 0) {
-      if (Aliases.get(0) != "NA") {
-        val groupAlias = Aliases.get(0).toString()
-        val inputAliases: CharSequence = groupAlias
-        val pattStr_Aliases: String = "(language:[A-Za-z]+,value:[A-Za-z]+)"
-        val p_Aliases: Pattern = Pattern.compile(pattStr_Aliases)
-        val m_Aliases: Matcher = p_Aliases.matcher(inputAliases)
-        var i = 1
-        while ((m_Aliases.find())) {
-          val replabels2: String = m_Aliases.group()
-          val parts: Array[String] = replabels2.split(":", 2)
-          val pairs = parts(1)
-          val pairValue: Array[String] = pairs.split(":", 2)
-          val finalvalue = pairValue(1)
-          val element = ID + "::" + "aliases_Value" + (i) + "::" + finalvalue
-          Map_Revision.add(element)
-          i = i + 1
-        }
-      } else {
-        val element = ID + "::" + "aliases_Value" + "::" + "NA"
-        Map_Revision.add(element)
-      }
     }
     
-    //5.Claims
+  sc.stop()
+  }
+  
+  //***********************************************************************************************************************************************
+  // Function 2:Training XML and Vandalism Detection 
+  def Training_Start_StandardXMLParser_VD(sc: SparkContext): DataFrame = {
+    val sqlContext = new org.apache.spark.sql.SQLContext(sc)
+    import sqlContext.implicits._
+    import org.apache.spark.sql.functions._ // for UDF
+    import org.apache.spark.sql.types._
 
-    //6.Sitelink:
+          // Streaming records:
+      val jobConf = new JobConf()
+      val NormalXML_Parser_OBJ = new ParseNormalXML()
+      val RDD_OBJ = new ParseNormalXML()
+    
+      val Training_RDD_All_Record1 = RDD_OBJ.Training_DB_NormalXML_Parser_Input1(sc)
+      val Training_RDD_All_Record2 = RDD_OBJ.Training_DB_NormalXML_Parser_Input2(sc)
+      val Training_RDD_All_Record3 = RDD_OBJ.Training_DB_NormalXML_Parser_Input3(sc)
+      //RDD_All_Record1.foreach(println)
+      //RDD_All_Record2.foreach(println)
+      // RDD_All_Record3.foreach(println)
 
-    //.7 Comments :
-    val commentarray = Get_Comment(obj)
-    val comment = commentarray.get(0)
-    val elementcomment = ID + "::" + "comment" + "::" + comment
-    Map_Revision.add(elementcomment)
+      val Training_RDD_All_Record = Training_RDD_All_Record1.union(Training_RDD_All_Record2).union(Training_RDD_All_Record3).distinct().cache()
 
-    Map_Revision
+      //println(RDD_All_Record.count())
+       println(Training_RDD_All_Record.count())
+
+      // ======= Json part :
+      //Json RDD : Each record has its Revision iD:
+      val JsonRDD = Training_RDD_All_Record.map(_.split("NNLL")).map(v => replacing_with_Quoto(v(0), v(8))).cache()
+      //JsonRDD.foreach(println)
+      //println(JsonRDD.count())
+
+      // Data set
+      val Ds_Json = sqlContext.jsonRDD(JsonRDD).select("key", "id", "labels", "descriptions", "aliases", "claims", "sitelinks").cache()
+      //Ds_Json.show()
+      // println(Ds_Json.count())
+
+      // ======= Tags part : // Contributor IP here is in Decimal format not IP format and It is converted in ParseNormalXml stage
+      val TagsRDD = Training_RDD_All_Record.map(_.split("NNLL")).map(x => (x(0), x(1), x(2), x(3), x(4), x(5), x(6), x(7), x(8), x(9), x(10), x(11))).cache()
+      val DF_Tags = TagsRDD.toDF("Rid", "Itemid", "comment", "pid", "time", "contributorIP", "contributorID", "contributorName", "JsonText", "model", "format", "sha").cache()
+      //    DF_Tags.show()
+      //    println(DF_Tags.count())
+
+      //======== Join Json part with Tag Part:============================
+      //Joining to have full data
+      val DF_First_DF_Result_Join_Tags_and_Json = DF_Tags.as("T1").join(Ds_Json.as("T2"), $"T1.Rid" === $"T2.key", "leftouter").select("Rid", "itemid", "comment", "pid", "time", "contributorIP", "contributorID", "contributorName", "JsonText", "labels", "descriptions", "aliases", "claims", "sitelinks", "model", "format", "sha") //.orderBy("Rid", "Itemid")
+      DF_First_DF_Result_Join_Tags_and_Json.registerTempTable("Data1")
+      val dfr_DATA_JsonTages1 = sqlContext.sql("select * from Data1 order by itemid ,Rid ").cache()
+
+      val colNames = Seq("Rid2", "itemid2", "comment2", "pid2", "time2", "contributorIP2", "contributorID2", "contributorName2", "JsonText2", "labels2", "descriptions2", "aliases2", "claims2", "sitelinks2", "model2", "format2", "sha2")
+      val DF_Second = DF_First_DF_Result_Join_Tags_and_Json.toDF(colNames: _*) //.distinct()
+      DF_Second.registerTempTable("Data2")
+
+      //===================================================================Parent // Previous Revision==============================================================================================================
+      //val DF_Joined = result1.as("df1").join(result2.as("df2"), col("itemid") === col("itemid2") && col("index1") === col("index2") + 1, "leftouter").select("Rid", "itemid", "comment", "pid", "time", "contributorIP", "contributorID", "contributorName", "JsonText", "labels", "descriptions", "aliases", "claims", "sitelinks", "model", "format", "sha", "Rid2", "itemid2", "comment2", "pid2", "time2", "contributorIP2", "contributorID2", "contributorName2", "JsonText2", "labels2", "descriptions2", "aliases2", "claims2", "sitelinks2", "model2", "format2", "sha2")
+      //.select("itemid", "Rid","pid","time","itemid2","Rid2","pid2","time2")
+
+      //Joining based on Parent Id to get the previous cases: ParentID
+      val DF_Joined = DF_First_DF_Result_Join_Tags_and_Json.as("df1").join(DF_Second.as("df2"), $"df1.pid" === $"df2.Rid2", "leftouter").distinct()
+
+      val RDD_After_JoinDF = DF_Joined.rdd.distinct()
+      val x = RDD_After_JoinDF.map(row => (row(0).toString().toInt, row)).cache()
+      val part = new RangePartitioner(4, x)
+      val partitioned = x.partitionBy(part).persist() // persist is important for this case and obligatory.
+      //partitioned.foreach(println)
+      //
+      //      //=====================================================All Features Based on Categories of Features Data Type :==================================================================================
+      //
+      val Result_all_Features = partitioned.map { case (x, y) => (x.toString() + "," + All_Features(y).toString()) } // we convert the Pair RDD to String one LineRDD to be able to make DF based on ","
+      //Result_all_Features.foreach(println)
+      // println("nayef" + Result_all_Features.count())
+
+      // Conver the RDD of All Features to  DataFrame:
+
+      val schema = StructType(
+
+        //0
+        StructField("Rid", IntegerType, false) ::
+
+          // Character Features :
+          /* 1*/ StructField("C1uppercaseratio", DoubleType, false) :: /*2 */ StructField("C2lowercaseratio", DoubleType, false) :: /*3*/ StructField("C3alphanumericratio", DoubleType, false) ::
+          /*4*/ StructField("C4asciiratio", DoubleType, false) :: /*5*/ StructField("C5bracketratio", DoubleType, false) :: /*6*/ StructField("C6digitalratio", DoubleType, false) ::
+          /*7*/ StructField("C7latinratio", DoubleType, false) :: /*8*/ StructField("C8whitespaceratio", DoubleType, false) :: /* 9*/ StructField("C9puncratio", DoubleType, false) ::
+          /*10*/ StructField("C10longcharacterseq", DoubleType, false) :: /*11*/ StructField("C11arabicratio", DoubleType, false) :: /*12*/ StructField("C12bengaliratio", DoubleType, false) ::
+          /*13 */ StructField("C13brahmiratio", DoubleType, false) :: /*14*/ StructField("C14cyrilinratio", DoubleType, false) :: /*15*/ StructField("C15hanratio", DoubleType, false) ::
+          /*16*/ StructField("c16malysiaratio", DoubleType, false) :: /*17*/ StructField("C17tamiratio", DoubleType, false) :: /*18*/ StructField("C18telugratio", DoubleType, false) ::
+          /*19 */ StructField("C19symbolratio", DoubleType, false) :: /*20 */ StructField("C20alpharatio", DoubleType, false) :: /*21*/ StructField("C21visibleratio", DoubleType, false) ::
+          /*22*/ StructField("C22printableratio", DoubleType, false) :: /*23*/ StructField("C23blankratio", DoubleType, false) :: /*24 */ StructField("C24controlratio", DoubleType, false) ::
+          /* 25 */ StructField("C25hexaratio", DoubleType, false) ::
+
+          //word Features:
+          /*26*/ StructField("W1languagewordratio", DoubleType, false) :: /*27 Boolean */ StructField("W2Iscontainlanguageword", DoubleType, false) :: /*28*/ StructField("W3lowercaseratio", DoubleType, false) ::
+          /*29 Integer */ StructField("W4longestword", IntegerType, false) :: /*30 Boolean */ StructField("W5IscontainURL", DoubleType, false) :: /*31*/ StructField("W6badwordratio", DoubleType, false) ::
+          /*32*/ StructField("W7uppercaseratio", DoubleType, false) :: /*33*/ StructField("W8banwordratio", DoubleType, false) :: /*34 Boolean */ StructField("W9FemalFirstName", DoubleType, false) ::
+          /*35 Boolean */ StructField("W10MaleFirstName", DoubleType, false) :: /*36 Boolean */ StructField("W11IscontainBadword", DoubleType, false) :: /*37 Boolean*/ StructField("W12IsContainBanword", DoubleType, false) ::
+          /*38 integer */ StructField("W13NumberSharewords", DoubleType, false) :: /*39 Integer */ StructField("W14NumberSharewordswithoutStopwords", DoubleType, false) ::
+          /*40*/ StructField("W15PortionQid", DoubleType, false) :: /*41*/ StructField("W16PortionLnags", DoubleType, false) :: /*42*/ StructField("W17PortionLinks", DoubleType, false) ::
+
+          //
+          //          // Sentences Features:
+          /*43*/ StructField("S1CommentTailLength", DoubleType, false) :: /*44*/ StructField("S2SimikaritySitelinkandLabel", DoubleType, false) :: /*45*/ StructField("S3SimilarityLabelandSitelink", DoubleType, false) :: /*46*/ StructField("S4SimilarityCommentComment", DoubleType, false) ::
+          //
+          //          // Statements Features :
+          /*47*/ StructField("SS1Property", StringType, false) :: /*48*/ StructField("SS2DataValue", StringType, false) :: /*49*/ StructField("SS3ItemValue", StringType, false) ::
+          //
+          //
+          //        //User Features :
+          /*50 Boolean*/ StructField("U1IsPrivileged", DoubleType, false) :: /*51 Boolean*/ StructField("U2IsBotUser", DoubleType, false) :: /*52 Boolean*/ StructField("U3IsBotuserWithFlaguser", DoubleType, false) ::
+          /*53 Boolean*/ StructField("U4IsProperty", DoubleType, false) :: /*54 Boolean*/ StructField("U5IsTranslator", DoubleType, false) :: /*55 Boolean*/ StructField("U6IsRegister", DoubleType, false) ::
+          /*56*/ StructField("U7IPValue", DoubleType, false) :: /*57*/ StructField("U8UserID", IntegerType, false) :: /*58*/ StructField("U9HasBirthDate", DoubleType, false) :: /*59*/ StructField("U10HasDeathDate", DoubleType, false) ::
+
+          //Items Features :
+
+          /*60*/ StructField("I1NumberLabels", DoubleType, false) :: /*61*/ StructField("I2NumberDescription", DoubleType, false) :: /*62*/ StructField("I3NumberAliases", DoubleType, false) :: /*63*/ StructField("I4NumberClaims", DoubleType, false) ::
+          /*64*/ StructField("I5NumberSitelinks", DoubleType, false) :: /*65*/ StructField("I6NumberStatement", DoubleType, false) :: /*66*/ StructField("I7NumberReferences", DoubleType, false) :: /*67*/ StructField("I8NumberQualifier", DoubleType, false) ::
+          /*68*/ StructField("I9NumberQualifierOrder", DoubleType, false) :: /*69*/ StructField("I10NumberBadges", DoubleType, false) :: /*70*/ StructField("I11ItemTitle", StringType, false) ::
+
+          // Revision Features:
+          /*71*/ StructField("R1languageRevision", StringType, false) :: /*72*/ StructField("R2RevisionLanguageLocal", StringType, false) :: /*73*/ StructField("R3IslatainLanguage", DoubleType, false) ::
+          /*74*/ StructField("R4JsonLength", DoubleType, false) :: /*75*/ StructField("R5RevisionAction", StringType, false) :: /*76*/ StructField("R6PrevReviAction", StringType, false) ::
+          /*77*/ StructField("R7RevisionAccountChange", DoubleType, false) :: /*78*/ StructField("R8ParRevision", StringType, false) :: /*79*/ StructField("R9RevisionTime", StringType, false) ::
+          /*80*/ StructField("R10RevisionSize", DoubleType, false) :: /*81*/ StructField("R11ContentType", StringType, false) :: /*82*/ StructField("R12BytesIncrease", DoubleType, false) ::
+          /*83*/ StructField("R13TimeSinceLastRevi", DoubleType, false) :: /*84*/ StructField("R14CommentLength", DoubleType, false) :: /*85*/ StructField("R15RevisionSubaction", StringType, false) ::
+          /*86*/ StructField("R16PrevReviSubaction", StringType, false) ::
+
+          Nil)
+
+      val rowRDD = Result_all_Features.map(line => line.split(",")).map(e ⇒ Row(e(0).toInt // character feature column
+      , e(1).toDouble, e(2).toDouble, e(3).toDouble, e(4).toDouble, e(5).toDouble, e(6).toDouble, e(7).toDouble, e(8).toDouble, e(9).toDouble, RoundDouble(e(10).toDouble),
+        e(11).toDouble, e(12).toDouble, e(13).toDouble, e(14).toDouble, e(15).toDouble, e(16).toDouble, e(17).toDouble, e(18).toDouble, e(19).toDouble, e(20).toDouble, e(21).toDouble, e(22).toDouble, e(23).toDouble, e(24).toDouble, e(25).toDouble //Word Feature column
+        , e(26).toDouble, e(27).toDouble, e(28).toDouble, e(29).toDouble.toInt, e(30).toDouble, e(31).toDouble, e(32).toDouble, e(33).toDouble, e(34).toDouble, e(35).toDouble, e(36).toDouble, e(37).toDouble, RoundDouble(e(38).toDouble), RoundDouble(e(39).toDouble), e(40).toDouble, e(41).toDouble, e(42).toDouble // Sentences Features column:
+        , RoundDouble(e(43).toDouble), e(44).toDouble, e(45).toDouble, e(46).toDouble //Statement Features Column: 
+        , e(47), e(48), e(49) // User Features Column: 
+        , e(50).toDouble, e(51).toDouble, e(52).toDouble, e(53).toDouble, e(54).toDouble, e(55).toDouble, e(56).toDouble, e(57).toDouble.toInt, e(58).toDouble, e(59).toDouble //Item Features column:
+        , e(60).toDouble, e(61).toDouble, e(62).toDouble, e(63).toDouble, e(64).toDouble, e(65).toDouble, e(66).toDouble, e(67).toDouble, e(68).toDouble, e(69).toDouble, "Q" + e(70).toDouble.toInt.toString() //Revision Features Column: 
+        , e(71), e(72), e(73).toDouble, e(74).toDouble, e(75), e(76), e(77).toDouble, e(78), e(79), e(80).toDouble, e(81), e(82).toDouble, e(83).toDouble, e(84).toDouble, e(85), e(86)))
+
+      //a.User Frequency:
+      //number of revisions a user has contributed
+      //val resu= DF_Tags.groupBy("contributorID").agg(count("Rid"))
+      DF_Tags.registerTempTable("TagesTable")
+      val ContributorFreq_for_Each_Revision_DF = sqlContext.sql("select contributorID as CIDUSER1, count(Rid) as NumberofRevisionsUserContributed from TagesTable where contributorID !='0' group by contributorID ") //.drop("CIDUSER1")
+      //ContributorFreq_for_Each_Revision_DF.show()
+
+      //b.Cumulated : Number of a unique Item a user has contributed.
+      val CumulatedNumberof_uniqueItemsForUser_DF = sqlContext.sql("select contributorID as CIDUSER2,  COUNT(DISTINCT itemid) as NumberofUniqueItemsUseredit from TagesTable where contributorID !='0' group by contributorID") //.drop("CIDUSER2")
+      //CumulatedNumberof_uniqueItemsForUser_DF.show()
+
+      //1.Item Frequency:
+      // number of revisions an Item has
+      val ItemFrequ_DF = sqlContext.sql("select itemid, count(Rid) as NumberRevisionItemHas from TagesTable  group by itemid")
+      // ItemFrequ_DF.show()
+
+      //2. Cumulate number of unique users have edited the Item : Did not consider the users IP. Contributor is an IP or Name. we consider name
+      val CumulatedNumberof_UniqueUserForItem_DF = sqlContext.sql("select itemid,  COUNT(DISTINCT contributorID) as NumberUniqUserEditItem from TagesTable where contributorID !='0' group by itemid")
+      //CumulatedNumberof_UniqueUserForItem_DF.show()
+
+      //3. freq each Item :
+      val Fre_Item_DF = sqlContext.sql("select itemid,  COUNT(itemid) as FreqItem from TagesTable  group by itemid")
+      // Fre_Item_DF.show()
+
+      //*****************************************************************************************************************************************
+      // This is Main DataFrame:
+      val BeforeJoin_All_Features = sqlContext.createDataFrame(rowRDD, schema)
+      //BeforeJoin_All_Features.show()
+
+      //********************************** User feature Join
+
+      // Join1 for add The first User Feature : number of revisions a user has contributed
+      val AfterJoinUser1_All_Features = BeforeJoin_All_Features.as("T1").join(ContributorFreq_for_Each_Revision_DF.as("T2"), $"T1.U8UserID" === $"T2.CIDUSER1", "leftouter").drop("CIDUSER1")
+      //AfterJoinUser1_All_Features.show()
+
+      // Join2 for add The second  User Feature
+      val AfterJoinUser2_All_Features = AfterJoinUser1_All_Features.as("T1").join(CumulatedNumberof_uniqueItemsForUser_DF.as("T2"), $"T1.U8UserID" === $"T2.CIDUSER2", "leftouter").drop("CIDUSER2")
+      //AfterJoinUser2_All_Features.show()
+
+      //********************************** Item Feature Join
+      // Join3 for add The First  Item Feature :number of revisions an Item has
+      val AfterJoinItem3_All_Features = AfterJoinUser2_All_Features.as("T1").join(ItemFrequ_DF.as("T2"), $"T1.I11ItemTitle" === $"T2.itemid", "leftouter").drop("itemid")
+      // AfterJoinItem3_All_Features.show()
+
+      // Join4 for add The Second  Item Feature
+      val AfterJoinItem4_All_Features = AfterJoinItem3_All_Features.as("T1").join(CumulatedNumberof_UniqueUserForItem_DF.as("T2"), $"T1.I11ItemTitle" === $"T2.itemid", "leftouter").drop("itemid")
+      // AfterJoinItem4_All_Features.show()
+
+      // Join5 for add The Third  Item Feature
+      val AfterJoinItem5_All_Features = AfterJoinItem4_All_Features.as("T1").join(Fre_Item_DF.as("T2"), $"T1.I11ItemTitle" === $"T2.itemid", "leftouter").drop("itemid")
+      //2 AfterJoinItem5_All_Features.show()
+
+      //********************************
+
+      //*Geografical information Feature from Meta File
+      //REVISION_ID|REVISION_SESSION_ID|USER_COUNTRY_CODE|USER_CONTINENT_CODE|USER_TIME_ZONE|USER_REGION_CODE|USER_CITY_NAME|USER_COUNTY_NAME|REVISION_TAGS
+      val df_GeoInf = sqlContext.read
+        .format("com.databricks.spark.csv")
+        .option("header", "true") // Use first line of all files as header
+        .option("inferSchema", "true") // Automatically infer data types
+        .load("hdfs://localhost:9000/mydata/Meta.csv").select("REVISION_ID", "REVISION_SESSION_ID", "USER_COUNTRY_CODE", "USER_CONTINENT_CODE", "USER_TIME_ZONE", "USER_REGION_CODE", "USER_CITY_NAME", "USER_COUNTY_NAME", "REVISION_TAGS")
+      // df_GeoInf.show()
+
+      val df_Truth = sqlContext.read
+        .format("com.databricks.spark.csv")
+        .option("header", "true") // Use first line of all files as header
+        .option("inferSchema", "true") // Automatically infer data types
+        .load("hdfs://localhost:9000/mydata/truth.csv").select("REVISION_ID", "ROLLBACK_REVERTED", "UNDO_RESTORE_REVERTED")
+      // df_GeoInf.show()
+
+      val AfterJoinGeoInfo_All_Features = AfterJoinItem5_All_Features.as("T1").join(df_GeoInf.as("T2"), $"T1.Rid" === $"T2.REVISION_ID", "leftouter").drop("REVISION_ID").cache()
+      // AfterJoinGeoInfo_All_Features.show()
+
+      val Final_All_Features = AfterJoinGeoInfo_All_Features.as("T1").join(df_Truth.as("T2"), $"T1.Rid" === $"T2.REVISION_ID", "leftouter").drop("REVISION_ID").cache()
+      //Final_All_Features.show()
+
+      // Pre- process Data ============================================================================================================================================================
+
+      // For String Column, We fill the Null values by "NA":
+
+      var Fill_Missing_Final_All_Features = Final_All_Features.na.fill("NA", Seq("USER_COUNTRY_CODE", "USER_CONTINENT_CODE", "USER_TIME_ZONE", "USER_REGION_CODE", "USER_CITY_NAME", "USER_COUNTY_NAME", "REVISION_TAGS")).cache()
+
+      // For Integer Frequency  Column, We fill the Null values by 0:
+      Fill_Missing_Final_All_Features = Fill_Missing_Final_All_Features.na.fill(0, Seq("FreqItem", "NumberUniqUserEditItem", "NumberRevisionItemHas", "NumberofUniqueItemsUseredit", "NumberofRevisionsUserContributed", "REVISION_SESSION_ID")).cache()
+      //Fill_Missing_Final_All_Features.show()
+
+      val BoolToDoubleUDF = udf { (BoolAsString: String) => if (BoolAsString == "T") 1.0 else 0.0 }
+      val IntegerToDouble = udf { (IntegerRevisionSessionID: Integer) => IntegerRevisionSessionID.toDouble }
+      Fill_Missing_Final_All_Features = Fill_Missing_Final_All_Features.withColumn("FinalROLLBACK_REVERTED", BoolToDoubleUDF(col("ROLLBACK_REVERTED")))
+      Fill_Missing_Final_All_Features = Fill_Missing_Final_All_Features.withColumn("FinalUNDO_RESTORE_REVERTED", BoolToDoubleUDF(col("UNDO_RESTORE_REVERTED")))
+
+      Fill_Missing_Final_All_Features = Fill_Missing_Final_All_Features.withColumn("FinalREVISION_SESSION_ID", IntegerToDouble(col("REVISION_SESSION_ID")))
+
+      Fill_Missing_Final_All_Features = Fill_Missing_Final_All_Features.withColumn("FinalNumberofRevisionsUserContributed", IntegerToDouble(col("NumberofRevisionsUserContributed")))
+      Fill_Missing_Final_All_Features = Fill_Missing_Final_All_Features.withColumn("FinalNumberofUniqueItemsUseredit", IntegerToDouble(col("NumberofUniqueItemsUseredit")))
+
+      Fill_Missing_Final_All_Features = Fill_Missing_Final_All_Features.withColumn("FinalNumberRevisionItemHas", IntegerToDouble(col("NumberRevisionItemHas")))
+      Fill_Missing_Final_All_Features = Fill_Missing_Final_All_Features.withColumn("FinalNumberUniqUserEditItem", IntegerToDouble(col("NumberUniqUserEditItem")))
+      Fill_Missing_Final_All_Features = Fill_Missing_Final_All_Features.withColumn("FinalFreqItem", IntegerToDouble(col("FreqItem")))
+
+      //===========================================================================Caharacter Features : Double , Integer Features ====================================================================================
+      //Double Ratio:  For Ratio Double column, Fill -1 value by Median:Character Features + Ratio of Word Features :
+      var Samples = Fill_Missing_Final_All_Features.sample(false, 0.001).cache() //.where($"S2SimikaritySitelinkandLabel">0.0 || $"S3SimilarityLabelandSitelink">0.0 || $"S4SimilarityCommentComment">0.0)
+      Samples.registerTempTable("df")
+
+      val Query = "select " +
+        "percentile_approx(C1uppercaseratio, 0.5) as meadian1" + "," + "percentile_approx(C2lowercaseratio, 0.5) as median2" + " ," +
+        "percentile_approx(C3alphanumericratio, 0.5) as median3" + "," + "percentile_approx(C4asciiratio, 0.5) as median4" + "," +
+        "percentile_approx(C5bracketratio, 0.5) as median5" + "," + "percentile_approx(C6digitalratio, 0.5) as median6" + "," +
+        "percentile_approx(C7latinratio, 0.5) as median7" + "," + "percentile_approx(C8whitespaceratio, 0.5) as median8" + "," +
+        "percentile_approx(C9puncratio, 0.5) as median9" + "," + "percentile_approx(C11arabicratio, 0.5) as median11" + "," +
+        "percentile_approx(C12bengaliratio, 0.5) as median12" + "," + "percentile_approx(C13brahmiratio, 0.5) as median13" + "," +
+        "percentile_approx(C14cyrilinratio, 0.5) as median14" + "," + "percentile_approx(C15hanratio, 0.5) as median15" + "," +
+        "percentile_approx(c16malysiaratio, 0.5) as median16" + "," +
+        "percentile_approx(C17tamiratio, 0.5) as median17" + "," + "percentile_approx(C18telugratio, 0.5) as median18" + "," +
+        "percentile_approx(C19symbolratio, 0.5) as median19" + "," + "percentile_approx(C20alpharatio, 0.5) as median20" + "," +
+        "percentile_approx(C21visibleratio, 0.5) as median21" + "," + "percentile_approx(C22printableratio, 0.5) as median22" + "," +
+        "percentile_approx(C23blankratio, 0.5) as median23" + "," + "percentile_approx(C24controlratio, 0.5) as median24" + "," +
+        "percentile_approx(C25hexaratio, 0.5) as median25" ++ "," + "percentile_approx(W1languagewordratio, 0.5) as median26" + "," +
+        "percentile_approx(W3lowercaseratio, 0.5) as median27" + "," + "percentile_approx(W6badwordratio, 0.5) as median28" + "," +
+        "percentile_approx(W7uppercaseratio, 0.5) as median27" + "," + "percentile_approx(W8banwordratio, 0.5) as median27" + " from df"
+
+      val medianValues = sqlContext.sql(Query).rdd
+      val Median = medianValues.first()
+
+      // Median :
+      // Character Ratio Features: UDF
+      val lkpUDF1 = udf { (i: Double) => if (i == 0) Median(0).toString().toDouble else i }
+      val lkpUDF2 = udf { (i: Double) => if (i == 0) Median(1).toString().toDouble else i }
+      val lkpUDF3 = udf { (i: Double) => if (i == 0) Median(2).toString().toDouble else i }
+      val lkpUDF4 = udf { (i: Double) => if (i == 0) Median(3).toString().toDouble else i }
+      val lkpUDF5 = udf { (i: Double) => if (i == 0) Median(4).toString().toDouble else i }
+      val lkpUDF6 = udf { (i: Double) => if (i == 0) Median(5).toString().toDouble else i }
+      val lkpUDF7 = udf { (i: Double) => if (i == 0) Median(6).toString().toDouble else i }
+      val lkpUDF8 = udf { (i: Double) => if (i == 0) Median(7).toString().toDouble else i }
+      val lkpUDF9 = udf { (i: Double) => if (i == 0) Median(8).toString().toDouble else i }
+
+      val lkpUDF11 = udf { (i: Double) => if (i == 0) Median(9).toString().toDouble else i }
+      val lkpUDF12 = udf { (i: Double) => if (i == 0) Median(10).toString().toDouble else i }
+      val lkpUDF13 = udf { (i: Double) => if (i == 0) Median(11).toString().toDouble else i }
+      val lkpUDF14 = udf { (i: Double) => if (i == 0) Median(12).toString().toDouble else i }
+      val lkpUDF15 = udf { (i: Double) => if (i == 0) Median(13).toString().toDouble else i }
+      val lkpUDF16 = udf { (i: Double) => if (i == 0) Median(14).toString().toDouble else i }
+      val lkpUDF17 = udf { (i: Double) => if (i == 0) Median(15).toString().toDouble else i }
+      val lkpUDF18 = udf { (i: Double) => if (i == 0) Median(16).toString().toDouble else i }
+      val lkpUDF19 = udf { (i: Double) => if (i == 0) Median(17).toString().toDouble else i }
+      val lkpUDF20 = udf { (i: Double) => if (i == 0) Median(18).toString().toDouble else i }
+      val lkpUDF21 = udf { (i: Double) => if (i == 0) Median(19).toString().toDouble else i }
+      val lkpUDF22 = udf { (i: Double) => if (i == 0) Median(20).toString().toDouble else i }
+      val lkpUDF23 = udf { (i: Double) => if (i == 0) Median(21).toString().toDouble else i }
+      val lkpUDF24 = udf { (i: Double) => if (i == 0) Median(22).toString().toDouble else i }
+      val lkpUDF25 = udf { (i: Double) => if (i == 0) Median(23).toString().toDouble else i }
+
+      val df1 = Fill_Missing_Final_All_Features.withColumn("FinalC1uppercaseratio", lkpUDF1(col("C1uppercaseratio"))) //.drop("C1uppercaseratio").cache()
+      val df2 = df1.withColumn("FinalC2lowercaseratio", lkpUDF2(col("C2lowercaseratio"))) //.drop("C2lowercaseratio").cache()
+      //df1.unpersist()
+      val df3 = df2.withColumn("FinalC3alphanumericratio", lkpUDF3(col("C3alphanumericratio"))) //.drop("C3alphanumericratio").cache()
+      //df2.unpersist()
+      val df4 = df3.withColumn("FinalC4asciiratio", lkpUDF4(col("C4asciiratio"))) //.drop("C4asciiratio").cache()
+      //df3.unpersist()
+      val df5 = df4.withColumn("FinalC5bracketratio", lkpUDF5(col("C5bracketratio"))) //.drop("C5bracketratio").cache()
+      //df4.unpersist()
+      val df6 = df5.withColumn("FinalC6digitalratio", lkpUDF6(col("C6digitalratio"))) //.drop("C6digitalratio").cache()
+      //df5.unpersist()
+      val df7 = df6.withColumn("FinalC7latinratio", lkpUDF7(col("C7latinratio"))) //.drop("C7latinratio").cache()
+      //df6.unpersist()
+      val df8 = df7.withColumn("FinalC8whitespaceratio", lkpUDF8(col("C8whitespaceratio"))) //.drop("C8whitespaceratio").cache()
+      //df7.unpersist()
+      val df9 = df8.withColumn("FinalC9puncratio", lkpUDF9(col("C9puncratio"))) //.drop("C9puncratio").cache()
+
+      // Mean :
+      // character integer values :
+      val Mean_C10longcharacterseq = Samples.agg(mean("C10longcharacterseq")).head()
+      val C10_Mean = Mean_C10longcharacterseq.getDouble(0)
+      val lkpUDFC10 = udf { (i: Double) => if (i == 0) C10_Mean else i }
+      val df10 = df9.withColumn("FinalC10longcharacterseq", lkpUDFC10(col("C10longcharacterseq")))
+
+      //Median
+      val df11 = df10.withColumn("FinalC11arabicratio", lkpUDF11(col("C11arabicratio"))) //.drop("C11arabicratio").cache()
+      // df9.unpersist()
+      val df12 = df11.withColumn("FinalC12bengaliratio", lkpUDF12(col("C12bengaliratio"))) //.drop("C12bengaliratio").cache()
+      //df11.unpersist()
+      val df13 = df12.withColumn("FinalC13brahmiratio", lkpUDF13(col("C13brahmiratio"))) //.drop("C13brahmiratio").cache()
+      // df12.unpersist()
+      val df14 = df13.withColumn("FinalC14cyrilinratio", lkpUDF14(col("C14cyrilinratio"))) //.drop("C14cyrilinratio").cache()
+      // df13.unpersist()
+      val df15 = df14.withColumn("FinalC15hanratio", lkpUDF15(col("C15hanratio"))) //.drop("C15hanratio").cache()
+      // df14.unpersist()
+      val df16 = df15.withColumn("Finalc16malysiaratio", lkpUDF16(col("c16malysiaratio"))) //.drop("c16malysiaratio").cache()
+      //df15.unpersist()
+      val df17 = df16.withColumn("FinalC17tamiratio", lkpUDF17(col("C17tamiratio"))) //.drop("C17tamiratio").cache()
+      //df16.unpersist()
+      val df18 = df17.withColumn("FinalC18telugratio", lkpUDF18(col("C18telugratio"))) //.drop("C18telugratio").cache()
+      //df17.unpersist()
+      val df19 = df18.withColumn("FinalC19symbolratio", lkpUDF19(col("C19symbolratio"))) //.drop("C19symbolratio").cache()
+      //df18.unpersist()
+      val df20 = df19.withColumn("FinalC20alpharatio", lkpUDF20(col("C20alpharatio"))) //.drop("C20alpharatio").cache()
+      // df19.unpersist()
+      val df21 = df20.withColumn("FinalC21visibleratio", lkpUDF21(col("C21visibleratio"))) //.drop("C21visibleratio").cache()
+      // df20.unpersist()
+      val df22 = df21.withColumn("FinalC22printableratio", lkpUDF22(col("C22printableratio"))) //.drop("C22printableratio").cache()
+      //df21.unpersist()
+      val df23 = df22.withColumn("FinalC23blankratio", lkpUDF23(col("C23blankratio"))) //.drop("C23blankratio").cache()
+      // df22.unpersist()
+      val df24 = df23.withColumn("FinalC24controlratio", lkpUDF24(col("C24controlratio"))) //.drop("C24controlratio").cache()
+      //df23.unpersist()
+      val df25 = df24.withColumn("FinalC25hexaratio", lkpUDF25(col("C25hexaratio"))) //.drop("C25hexaratio").cache()
+
+      //************************************************End Character Features ****************************************************************************************
+
+      //************************************************Start Word  Features ****************************************************************************************
+
+      // Word Ratio Features : UDF
+      val lkpUDFW1 = udf { (i: Double) => if (i == 0) Median(24).toString().toDouble else i }
+      val lkpUDFW3 = udf { (i: Double) => if (i == 0) Median(25).toString().toDouble else i }
+      val lkpUDFW6 = udf { (i: Double) => if (i == 0) Median(26).toString().toDouble else i }
+      val lkpUDFW7 = udf { (i: Double) => if (i == 0) Median(27).toString().toDouble else i }
+      val lkpUDFW8 = udf { (i: Double) => if (i == 0) Median(28).toString().toDouble else i }
+
+      //1.
+      val df26 = df25.withColumn("FinalW1languagewordratio", lkpUDFW1(col("W1languagewordratio"))) //.drop("W1languagewordratio").cache()
+
+      //2.Boolean(Double) IsContainLanguageWord
+
+      //3.
+      val df27 = df26.withColumn("FinalW3lowercaseratio", lkpUDFW3(col("W3lowercaseratio"))) //.drop("W3lowercaseratio").cache()
+      // df26.unpersist()
+
+      //4. Integer " Mean:
+      val Mean_W4longestword = Samples.agg(mean("W4longestword")).head()
+      val W4_Mean = Mean_W4longestword.getDouble(0)
+      val lkpUDFW4 = udf { (i: Double) => if (i == 0) W4_Mean else i }
+      val df28 = df27.withColumn("FinalW4longestword", lkpUDFW4(col("W4longestword")))
+
+      //5. Boolean (Double ) W5IscontainURL
+      //6.
+      val df29 = df28.withColumn("FinalW6badwordratio", lkpUDFW6(col("W6badwordratio"))) //.drop("W6badwordratio").cache()
+
+      //7.
+      val df30 = df29.withColumn("FinalW7uppercaseratio", lkpUDFW7(col("W7uppercaseratio"))) //.drop("W7uppercaseratio").cache()
+
+      //8.
+      val df31 = df30.withColumn("FinalW8banwordratio", lkpUDFW8(col("W8banwordratio"))) //.drop("W8banwordratio").cache()
+
+      //9.FemalFirst       Boolean(Double)
+      //10.Male First      Boolean(Double)
+      //11.ContainBadWord  Boolean(Double)
+      //12ContainBanWord   Boolean(Double)
+
+      //13. Integer(Double):
+      val Mean_W13W13NumberSharewords = Samples.agg(mean("W13NumberSharewords")).head()
+      val W13_Mean = Mean_W13W13NumberSharewords.getDouble(0)
+      val lkpUDFW13 = udf { (i: Double) => if (i == 0) W13_Mean else i }
+      val df32 = df31.withColumn("FinalW13NumberSharewords", lkpUDFW13(col("W13NumberSharewords")))
+
+      //14. Integer (Double):
+      val Mean_W14NumberSharewordswithoutStopwords = Samples.agg(mean("W14NumberSharewordswithoutStopwords")).head()
+      val W14_Mean = Mean_W14NumberSharewordswithoutStopwords.getDouble(0)
+      val lkpUDFW14 = udf { (i: Double) => if (i == 0) W14_Mean else i }
+      val df33 = df32.withColumn("FinalW14NumberSharewordswithoutStopwords", lkpUDFW14(col("W14NumberSharewordswithoutStopwords")))
+
+      // 15. Double (Not ratio):
+      val Mean_W15PortionQid = Samples.agg(mean("W15PortionQid")).head()
+      val W15_Mean = Mean_W15PortionQid.getDouble(0)
+      val lkpUDFW15 = udf { (i: Double) => if (i == 0) W15_Mean else i }
+      val df34 = df33.withColumn("FinalW15PortionQid", lkpUDFW15(col("W15PortionQid")))
+
+      //16. Double(Not Ratio):
+      val Mean_W16PortionLnags = Samples.agg(mean("W16PortionLnags")).head()
+      val W16_Mean = Mean_W16PortionLnags.getDouble(0)
+      val lkpUDFW16 = udf { (i: Double) => if (i == 0) W16_Mean else i }
+      val df35 = df34.withColumn("FinalW16PortionLnags", lkpUDFW16(col("W16PortionLnags")))
+
+      //17.Double(Not ratio):
+      val Mean_W17PortionLinks = Samples.agg(mean("W17PortionLinks")).head()
+      val W17_Mean = Mean_W17PortionLinks.getDouble(0)
+      val lkpUDFW17 = udf { (i: Double) => if (i == 0) W17_Mean else i }
+      val df36 = df35.withColumn("FinalW17PortionLinks", lkpUDFW17(col("W17PortionLinks")))
+
+      //************************************************End Word  Features ****************************************************************************************
+
+      //************************************************Start Sentences  Features ****************************************************************************************
+      // 1. Integer(Double)
+      val Mean_S1CommentTailLength = Samples.agg(mean("S1CommentTailLength")).head()
+      val S1_Mean = RoundDouble(Mean_S1CommentTailLength.getDouble(0))
+      val lkpUDFS1 = udf { (i: Double) => if (i == 0) S1_Mean else i }
+      val df37 = df36.withColumn("FinalS1CommentTailLength", lkpUDFS1(col("S1CommentTailLength")))
+
+      //2. Double  but Not ratio values :
+      val Mean_S2SimikaritySitelinkandLabel = Samples.agg(mean("S2SimikaritySitelinkandLabel")).head()
+      val S2_Mean = RoundDouble(Mean_S2SimikaritySitelinkandLabel.getDouble(0))
+      val lkpUDFS2 = udf { (i: Double) => if (i == 0) S2_Mean else i }
+      val df39 = df37.withColumn("FinalS2SimikaritySitelinkandLabel", lkpUDFS2(col("S2SimikaritySitelinkandLabel")))
+
+      //3. Double  but Not ratio values :
+      val Mean_S3SimilarityLabelandSitelink = Samples.agg(mean("S3SimilarityLabelandSitelink")).head()
+      val S3_Mean = RoundDouble(Mean_S3SimilarityLabelandSitelink.getDouble(0))
+      val lkpUDFS3 = udf { (i: Double) => if (i == 0.0) S3_Mean else i }
+      val df40 = df39.withColumn("FinalS3SimilarityLabelandSitelink", lkpUDFS3(col("S3SimilarityLabelandSitelink")))
+
+      //4.  Double  but Not ratio values :
+      val Mean_S4SimilarityCommentComment = Samples.agg(mean("S4SimilarityCommentComment")).head()
+      val S4_Mean = RoundDouble(Mean_S4SimilarityCommentComment.getDouble(0))
+      val lkpUDFS4 = udf { (i: Double) => if (i == 0.0) S4_Mean else i }
+      val df41 = df40.withColumn("FinalS4SimilarityCommentComment", lkpUDFS4(col("S4SimilarityCommentComment")))
+
+      //df41.show()
+      //************************************************End Sentences  Features ****************************************************************************************
+      //*********************************************** Start Statement  Features ****************************************************************************************
+      //1. String
+      //2. String
+      //3. String
+      //************************************************End Statement  Features ****************************************************************************************
+      //*********************************************** Start User Features ****************************************************************************************
+
+      //1.Boolean(Double)
+      //2.Boolean(Double)
+      //3.Boolean(Double)
+      //4.Boolean(Double)
+      //5.Boolean(Double)
+      //6.Boolean(Double)
+      //7. (Double) IP No need to fill Missing Data
+      //8. (Double) ID No need to fill Missing Data
+      //9.Boolean(Double)
+      //10.Boolean(Double)
+
+      //*********************************************** End User Features ****************************************************************************************
+      //*********************************************** Start Item Features ****************************************************************************************
+      //1. Integer (Double) No need to fill missing values
+      //2. Integer (Double) No need to fill missing values
+      //3. Integer (Double) No need to fill missing values
+      //4. Integer (Double) No need to fill missing values
+      //5. Integer (Double) No need to fill missing values
+      //6. Integer (Double) No need to fill missing values
+      //7. Integer (Double) No need to fill missing values
+      //8. Integer (Double) No need to fill missing values
+      //9. Integer (Double) No need to fill missing values
+      //10. Integer (Double) No need to fill missing values
+      //11. String
+      //*********************************************** End Item Features ****************************************************************************************
+      //*********************************************** Start Revision Features ****************************************************************************************
+      //1.String
+      //2.String
+      //3.Boolean (Double)
+      //4.Integer(Double)
+      //5.String
+      //6.String
+      //7. Boolean(Double)
+      //8. String
+      //9.String
+      //10. Integer (Double)
+      //11.String
+      //12. integer(Double)
+      //13. Long(Double)
+      //14. integer (Double)
+      //15.String
+      //16.String
+      //*********************************************** End Revision Features ****************************************************************************************
+      //*********************************************** Meta Data , Truth Data and Frequnces  ****************************************************************************************
+      //Meta
+      // 1.Revision Session :Integer (Converted to Double)
+      //2. User Country Code
+      //3.User Continent Code
+      //4.User Time Size
+      //5.User Region Code
+      //6.User-city Name
+      //7.User Country Name
+      //8.RevisionTags
+
+      // Truth:
+      //1.Undo
+
+      // Freq :
+
+      //1.5 features
+
+      // Roll Boolean     :Boolean (Double)
+      // Undo             :Boolean (Double)
+
+      //*********************************************** End Revision Features ****************************************************************************************
+
+      //===========================================================================String Features====================================================================================
+
+      val df42 = df41.withColumn(
+        //statement String features:
+        "StringFeatures", concat($"SS1Property", lit(";"), $"SS2DataValue", lit(";"), $"SS3ItemValue", lit(";"), $"I11ItemTitle",
+          //Revision  String Features:
+          lit(";"), $"R1languageRevision",
+          lit(";"), $"R2RevisionLanguageLocal",
+          lit(";"), $"R5RevisionAction",
+          lit(";"), $"R6PrevReviAction",
+          lit(";"), $"R8ParRevision",
+          lit(";"), $"R9RevisionTime",
+          lit(";"), $"R11ContentType",
+          lit(";"), $"R15RevisionSubaction",
+          lit(";"), $"R16PrevReviSubaction",
+
+          lit(";"), $"USER_COUNTRY_CODE",
+          lit(";"), $"USER_CONTINENT_CODE",
+          lit(";"), $"USER_TIME_ZONE",
+          lit(";"), $"USER_REGION_CODE",
+          lit(";"), $"USER_CITY_NAME",
+          lit(";"), $"USER_COUNTY_NAME",
+          lit(";"), $"REVISION_TAGS"))
+
+      val toArray = udf((record: String) => record.split(";").map(_.toString()))
+      val test1 = df42.withColumn("StringFeatures", toArray(col("StringFeatures")))
+      //  test1.show()
+      //  test1.printSchema()
+
+      val word2Vec = new Word2Vec().setInputCol("StringFeatures").setOutputCol("result").setVectorSize(20).setMinCount(0)
+      val model = word2Vec.fit(test1)
+      val result = model.transform(test1) //.rdd
+
+      // result.show()
+
+      val Todense = udf((b: Vector) => b.toDense)
+      val test_new2 = result.withColumn("result", Todense(col("result")))
+
+      val assembler = new VectorAssembler().setInputCols(Array(
+        "result",
+
+        // character
+        "FinalC1uppercaseratio", "FinalC2lowercaseratio", "FinalC3alphanumericratio", "FinalC4asciiratio", "FinalC5bracketratio", "FinalC6digitalratio",
+        "FinalC7latinratio", "FinalC8whitespaceratio", "FinalC9puncratio", "FinalC10longcharacterseq", "FinalC11arabicratio", "FinalC12bengaliratio",
+        "FinalC13brahmiratio", "FinalC14cyrilinratio", "FinalC15hanratio", "Finalc16malysiaratio", "FinalC17tamiratio", "FinalC18telugratio",
+        "FinalC19symbolratio", "FinalC20alpharatio", "FinalC21visibleratio", "FinalC22printableratio", "FinalC23blankratio", "FinalC24controlratio", "FinalC25hexaratio",
+
+        // Words
+        "FinalW1languagewordratio", "W2Iscontainlanguageword", "FinalW3lowercaseratio", "FinalW4longestword", "W5IscontainURL", "FinalW6badwordratio",
+        "FinalW7uppercaseratio", "FinalW8banwordratio", "W9FemalFirstName", "W10MaleFirstName", "W11IscontainBadword", "W12IsContainBanword",
+        "FinalW13NumberSharewords", "FinalW14NumberSharewordswithoutStopwords", "FinalW15PortionQid", "FinalW16PortionLnags", "FinalW17PortionLinks",
+
+        //Sentences :
+        "FinalS1CommentTailLength", "FinalS2SimikaritySitelinkandLabel", "FinalS3SimilarityLabelandSitelink", "FinalS4SimilarityCommentComment",
+
+        // User :
+        "U1IsPrivileged", "U2IsBotUser", "U3IsBotuserWithFlaguser", "U4IsProperty", "U5IsTranslator", "U6IsRegister", "U7IPValue", "U8UserID",
+        "U9HasBirthDate", "U10HasDeathDate",
+
+        //Item:
+
+        "I1NumberLabels", "I2NumberDescription", "I3NumberAliases", "I4NumberClaims", "I5NumberSitelinks", "I6NumberStatement",
+        "I7NumberReferences", "I8NumberQualifier", "I9NumberQualifierOrder", "I10NumberBadges",
+
+        //Revision:
+        "R3IslatainLanguage", "R4JsonLength", "R7RevisionAccountChange", "R10RevisionSize", "R12BytesIncrease",
+        "R13TimeSinceLastRevi", "R14CommentLength",
+
+        // Meta , truth , Freq
+        // meta :
+        "FinalREVISION_SESSION_ID",
+        // Truth:
+        "FinalUNDO_RESTORE_REVERTED",
+
+        //Freq:
+        "FinalNumberofRevisionsUserContributed",
+        "FinalNumberofUniqueItemsUseredit", "FinalNumberRevisionItemHas", "FinalNumberUniqUserEditItem", "FinalFreqItem")).setOutputCol("features")
+      val Training_Data = assembler.transform(test_new2)
+
+      // Prepare the data for classification:
+    //  NewData.registerTempTable("DB")
+    //  val Training_Data = sqlContext.sql("select Rid, features, FinalROLLBACK_REVERTED  from DB")
+     //val Data = sqlContext.sql("select Rid, features, FinalROLLBACK_REVERTED as label from DB") // for logistic regrision
+
+      //Data.show()
+
+      //val TestClassifiers = new Classifiers()
+//
+     //   TestClassifiers.RandomForestClassifer(Data, sqlContext)
+//      // TestClassifiers.DecisionTreeClassifier(Data, sqlContext)
+//      // TestClassifiers.LogisticRegrision(Data, sqlContext)
+//      // TestClassifiers.GradientBoostedTree(Data, sqlContext)
+//      // TestClassifiers.MultilayerPerceptronClassifier(Data, sqlContext)
+
+    Training_Data
    
+    
   }
-  //============= Under testing =========================================================
-  //    //8. info contributer:
-  //    val contributor = Get_Contributor(obj)
-  //
-  //    if (contributor == null || contributor.isEmpty()) {
-  //      val error = "Warning about Empty or Null String (contributor) in Build Revision Map Function"
-  //    } else {
-  //
-  //      //9. usename contributor:
-  //      val username = Get_User_NameofRevisionFromcontributor(contributor)
-  //      //10. Id User in contributor
-  //      val ID_contributor = Get_Id_UserName_OfRevisionFromContributor(contributor)
-  //    }
-  //
-  //    //    val startIndex8 = obj.indexOf("</format>");
-  //    //    val endIndex8 = obj.indexOf("<sha1>");
-  //    //    val result_json = obj.substring(startIndex8 + 1, endIndex8);
-  //    //    val Json_In_Revision = result_json.substring(34).trim();
-  //    //    // delete all quotes from the string
-  //    //    val withoutQuotes_Json_In_Revision = Json_In_Revision.replace("\"", "");
-  //
-  //    // id Item  Page...Data Model7
-  //    //    val startIndex9 = withoutQuotes_Json_In_Revision.indexOf("id");
-  //    //    val endIndex9 = withoutQuotes_Json_In_Revision.indexOf(",labels");
-  //    //    val id_Item = withoutQuotes_Json_In_Revision.substring(startIndex9 + 1, endIndex9).substring(2).trim();
-  //    //    val Item_Identifier = id_Item;
-  //
-  //    //TimeStamp Revision...Data Model2
-  //    //    val timestamp = Get_TIMEStamp(obj)
-  //
-  //    //=============================
-  //    //contributor revision :
-  //    //    val reg_contributer = "<contributor><username>.*</username><id>.*</id></contributor>"
-  //    //    val startIndex3 = obj.indexOf("<contributor>");
-  //    //    val endIndex3 = obj.indexOf("</contributor>");
-  //    //    val result_contributor = obj.substring(startIndex3 + 1, endIndex3);
-  //    //    val contributor_Revision = result_contributor.substring(12).trim()
-  //    //
-  //    //    // user name Revision...Data Model3
-  //    //    val startIndex4 = contributor_Revision.indexOf("<username>");
-  //    //    val endIndex4 = contributor_Revision.indexOf("</username>");
-  //    //    val result_contributor_UserName = contributor_Revision.substring(startIndex4 + 1, endIndex4);
-  //    //    val UserName_Revision = result_contributor_UserName.substring(9).trim()
-  //    //
-  //    //    // Id User Revision......Data Model4
-  //    //    val startIndex5 = contributor_Revision.indexOf("<id>");
-  //    //    val endIndex5 = contributor_Revision.indexOf("</id>");
-  //    //    val result_Id_UserName = contributor_Revision.substring(startIndex5 + 1, endIndex5);
-  //    //    val Id_user_Revision = result_Id_UserName.substring(3).trim()
-  //    //===================================
-  //    //    // Comment Revision ...Data Model5
-  //    //    val startIndex6 = obj.indexOf("<comment>");
-  //    //    val endIndex6 = obj.indexOf("</comment>");
-  //    //    val result_comment = obj.substring(startIndex6 + 1, endIndex6);
-  //    //    val comment_In_Revision = result_comment.substring(8).trim()
-  //
-  //    // Model Revision...Data Model6
-  //    val startIndex7 = obj.indexOf("<model>");
-  //    val endIndex7 = obj.indexOf("</model>");
-  //    val result_model = obj.substring(startIndex7 + 1, endIndex7);
-  //    val model_In_Revision = result_model.substring(6).trim()
-  //
-  //    //======================
-  //
-  //    //======================
-  //
 
-  //
-  //    //    //claims...Data Model11
-  //    //    val startIndex13 = withoutQuotes_Json_In_Revision.indexOf("claims");
-  //    //    val endIndex13 = withoutQuotes_Json_In_Revision.indexOf(",sitelinks");
-  //    //    val claims = withoutQuotes_Json_In_Revision.substring(startIndex13, endIndex13);
-  //    //
-  //    //    //site links...Data Model12
-  //    //    val startIndex14 = withoutQuotes_Json_In_Revision.indexOf("sitelinks");
-  //    //    val endIndex14 = withoutQuotes_Json_In_Revision.indexOf(getLast(withoutQuotes_Json_In_Revision));
-  //    //    val sitelinks = withoutQuotes_Json_In_Revision.substring(startIndex14, endIndex14);
-  //
-  //    //=============End:======= extract information from the json string
-  //    //=============Header Item : ID, Label, Description, Aliases:
+  
+    //***********************************************************************************************************************************************
+  // Function 3:Testing XML and Vandalism Detection 
+  def Testing_Start_StandardXMLParser_VD(sc: SparkContext): DataFrame = {
+    val sqlContext = new org.apache.spark.sql.SQLContext(sc)
+    import sqlContext.implicits._
+    import org.apache.spark.sql.functions._ // for UDF
+    import org.apache.spark.sql.types._
 
-  // for extract the sitelink
-  def getLast(str: String): Char = {
-    val len = str.length();
-    val result = str.charAt(len - 1);
+          // Streaming records:
+      val jobConf = new JobConf()
+      val NormalXML_Parser_OBJ = new ParseNormalXML()
+      val RDD_OBJ = new ParseNormalXML()
+    
+      val Testing_RDD_All_Record = RDD_OBJ.Testing_DB_NormalXML_Parser(sc).cache()
+
+
+      // ======= Json part :
+      //Json RDD : Each record has its Revision iD:
+      val JsonRDD = Testing_RDD_All_Record.map(_.split("NNLL")).map(v => replacing_with_Quoto(v(0), v(8))).cache()
+      //JsonRDD.foreach(println)
+      //println(JsonRDD.count())
+
+      // Data set
+      val Ds_Json = sqlContext.jsonRDD(JsonRDD).select("key", "id", "labels", "descriptions", "aliases", "claims", "sitelinks").cache()
+      //Ds_Json.show()
+      // println(Ds_Json.count())
+
+      // ======= Tags part : // Contributor IP here is in Decimal format not IP format and It is converted in ParseNormalXml stage
+      val TagsRDD = Testing_RDD_All_Record.map(_.split("NNLL")).map(x => (x(0), x(1), x(2), x(3), x(4), x(5), x(6), x(7), x(8), x(9), x(10), x(11))).cache()
+      val DF_Tags = TagsRDD.toDF("Rid", "Itemid", "comment", "pid", "time", "contributorIP", "contributorID", "contributorName", "JsonText", "model", "format", "sha").cache()
+      //    DF_Tags.show()
+      //    println(DF_Tags.count())
+
+      //======== Join Json part with Tag Part:============================
+      //Joining to have full data
+      val DF_First_DF_Result_Join_Tags_and_Json = DF_Tags.as("T1").join(Ds_Json.as("T2"), $"T1.Rid" === $"T2.key", "leftouter").select("Rid", "itemid", "comment", "pid", "time", "contributorIP", "contributorID", "contributorName", "JsonText", "labels", "descriptions", "aliases", "claims", "sitelinks", "model", "format", "sha") //.orderBy("Rid", "Itemid")
+      DF_First_DF_Result_Join_Tags_and_Json.registerTempTable("Data1")
+      val dfr_DATA_JsonTages1 = sqlContext.sql("select * from Data1 order by itemid ,Rid ").cache()
+
+      val colNames = Seq("Rid2", "itemid2", "comment2", "pid2", "time2", "contributorIP2", "contributorID2", "contributorName2", "JsonText2", "labels2", "descriptions2", "aliases2", "claims2", "sitelinks2", "model2", "format2", "sha2")
+      val DF_Second = DF_First_DF_Result_Join_Tags_and_Json.toDF(colNames: _*) //.distinct()
+      DF_Second.registerTempTable("Data2")
+
+      //===================================================================Parent // Previous Revision==============================================================================================================
+      //val DF_Joined = result1.as("df1").join(result2.as("df2"), col("itemid") === col("itemid2") && col("index1") === col("index2") + 1, "leftouter").select("Rid", "itemid", "comment", "pid", "time", "contributorIP", "contributorID", "contributorName", "JsonText", "labels", "descriptions", "aliases", "claims", "sitelinks", "model", "format", "sha", "Rid2", "itemid2", "comment2", "pid2", "time2", "contributorIP2", "contributorID2", "contributorName2", "JsonText2", "labels2", "descriptions2", "aliases2", "claims2", "sitelinks2", "model2", "format2", "sha2")
+      //.select("itemid", "Rid","pid","time","itemid2","Rid2","pid2","time2")
+
+      //Joining based on Parent Id to get the previous cases: ParentID
+      val DF_Joined = DF_First_DF_Result_Join_Tags_and_Json.as("df1").join(DF_Second.as("df2"), $"df1.pid" === $"df2.Rid2", "leftouter").distinct()
+
+      val RDD_After_JoinDF = DF_Joined.rdd.distinct()
+      val x = RDD_After_JoinDF.map(row => (row(0).toString().toInt, row)).cache()
+      val part = new RangePartitioner(4, x)
+      val partitioned = x.partitionBy(part).persist() // persist is important for this case and obligatory.
+      //partitioned.foreach(println)
+      //
+      //      //=====================================================All Features Based on Categories of Features Data Type :==================================================================================
+      //
+      val Result_all_Features = partitioned.map { case (x, y) => (x.toString() + "," + All_Features(y).toString()) } // we convert the Pair RDD to String one LineRDD to be able to make DF based on ","
+      //Result_all_Features.foreach(println)
+      // println("nayef" + Result_all_Features.count())
+
+      // Conver the RDD of All Features to  DataFrame:
+
+      val schema = StructType(
+
+        //0
+        StructField("Rid", IntegerType, false) ::
+
+          // Character Features :
+          /* 1*/ StructField("C1uppercaseratio", DoubleType, false) :: /*2 */ StructField("C2lowercaseratio", DoubleType, false) :: /*3*/ StructField("C3alphanumericratio", DoubleType, false) ::
+          /*4*/ StructField("C4asciiratio", DoubleType, false) :: /*5*/ StructField("C5bracketratio", DoubleType, false) :: /*6*/ StructField("C6digitalratio", DoubleType, false) ::
+          /*7*/ StructField("C7latinratio", DoubleType, false) :: /*8*/ StructField("C8whitespaceratio", DoubleType, false) :: /* 9*/ StructField("C9puncratio", DoubleType, false) ::
+          /*10*/ StructField("C10longcharacterseq", DoubleType, false) :: /*11*/ StructField("C11arabicratio", DoubleType, false) :: /*12*/ StructField("C12bengaliratio", DoubleType, false) ::
+          /*13 */ StructField("C13brahmiratio", DoubleType, false) :: /*14*/ StructField("C14cyrilinratio", DoubleType, false) :: /*15*/ StructField("C15hanratio", DoubleType, false) ::
+          /*16*/ StructField("c16malysiaratio", DoubleType, false) :: /*17*/ StructField("C17tamiratio", DoubleType, false) :: /*18*/ StructField("C18telugratio", DoubleType, false) ::
+          /*19 */ StructField("C19symbolratio", DoubleType, false) :: /*20 */ StructField("C20alpharatio", DoubleType, false) :: /*21*/ StructField("C21visibleratio", DoubleType, false) ::
+          /*22*/ StructField("C22printableratio", DoubleType, false) :: /*23*/ StructField("C23blankratio", DoubleType, false) :: /*24 */ StructField("C24controlratio", DoubleType, false) ::
+          /* 25 */ StructField("C25hexaratio", DoubleType, false) ::
+
+          //word Features:
+          /*26*/ StructField("W1languagewordratio", DoubleType, false) :: /*27 Boolean */ StructField("W2Iscontainlanguageword", DoubleType, false) :: /*28*/ StructField("W3lowercaseratio", DoubleType, false) ::
+          /*29 Integer */ StructField("W4longestword", IntegerType, false) :: /*30 Boolean */ StructField("W5IscontainURL", DoubleType, false) :: /*31*/ StructField("W6badwordratio", DoubleType, false) ::
+          /*32*/ StructField("W7uppercaseratio", DoubleType, false) :: /*33*/ StructField("W8banwordratio", DoubleType, false) :: /*34 Boolean */ StructField("W9FemalFirstName", DoubleType, false) ::
+          /*35 Boolean */ StructField("W10MaleFirstName", DoubleType, false) :: /*36 Boolean */ StructField("W11IscontainBadword", DoubleType, false) :: /*37 Boolean*/ StructField("W12IsContainBanword", DoubleType, false) ::
+          /*38 integer */ StructField("W13NumberSharewords", DoubleType, false) :: /*39 Integer */ StructField("W14NumberSharewordswithoutStopwords", DoubleType, false) ::
+          /*40*/ StructField("W15PortionQid", DoubleType, false) :: /*41*/ StructField("W16PortionLnags", DoubleType, false) :: /*42*/ StructField("W17PortionLinks", DoubleType, false) ::
+
+          //
+          //          // Sentences Features:
+          /*43*/ StructField("S1CommentTailLength", DoubleType, false) :: /*44*/ StructField("S2SimikaritySitelinkandLabel", DoubleType, false) :: /*45*/ StructField("S3SimilarityLabelandSitelink", DoubleType, false) :: /*46*/ StructField("S4SimilarityCommentComment", DoubleType, false) ::
+          //
+          //          // Statements Features :
+          /*47*/ StructField("SS1Property", StringType, false) :: /*48*/ StructField("SS2DataValue", StringType, false) :: /*49*/ StructField("SS3ItemValue", StringType, false) ::
+          //
+          //
+          //        //User Features :
+          /*50 Boolean*/ StructField("U1IsPrivileged", DoubleType, false) :: /*51 Boolean*/ StructField("U2IsBotUser", DoubleType, false) :: /*52 Boolean*/ StructField("U3IsBotuserWithFlaguser", DoubleType, false) ::
+          /*53 Boolean*/ StructField("U4IsProperty", DoubleType, false) :: /*54 Boolean*/ StructField("U5IsTranslator", DoubleType, false) :: /*55 Boolean*/ StructField("U6IsRegister", DoubleType, false) ::
+          /*56*/ StructField("U7IPValue", DoubleType, false) :: /*57*/ StructField("U8UserID", IntegerType, false) :: /*58*/ StructField("U9HasBirthDate", DoubleType, false) :: /*59*/ StructField("U10HasDeathDate", DoubleType, false) ::
+
+          //Items Features :
+
+          /*60*/ StructField("I1NumberLabels", DoubleType, false) :: /*61*/ StructField("I2NumberDescription", DoubleType, false) :: /*62*/ StructField("I3NumberAliases", DoubleType, false) :: /*63*/ StructField("I4NumberClaims", DoubleType, false) ::
+          /*64*/ StructField("I5NumberSitelinks", DoubleType, false) :: /*65*/ StructField("I6NumberStatement", DoubleType, false) :: /*66*/ StructField("I7NumberReferences", DoubleType, false) :: /*67*/ StructField("I8NumberQualifier", DoubleType, false) ::
+          /*68*/ StructField("I9NumberQualifierOrder", DoubleType, false) :: /*69*/ StructField("I10NumberBadges", DoubleType, false) :: /*70*/ StructField("I11ItemTitle", StringType, false) ::
+
+          // Revision Features:
+          /*71*/ StructField("R1languageRevision", StringType, false) :: /*72*/ StructField("R2RevisionLanguageLocal", StringType, false) :: /*73*/ StructField("R3IslatainLanguage", DoubleType, false) ::
+          /*74*/ StructField("R4JsonLength", DoubleType, false) :: /*75*/ StructField("R5RevisionAction", StringType, false) :: /*76*/ StructField("R6PrevReviAction", StringType, false) ::
+          /*77*/ StructField("R7RevisionAccountChange", DoubleType, false) :: /*78*/ StructField("R8ParRevision", StringType, false) :: /*79*/ StructField("R9RevisionTime", StringType, false) ::
+          /*80*/ StructField("R10RevisionSize", DoubleType, false) :: /*81*/ StructField("R11ContentType", StringType, false) :: /*82*/ StructField("R12BytesIncrease", DoubleType, false) ::
+          /*83*/ StructField("R13TimeSinceLastRevi", DoubleType, false) :: /*84*/ StructField("R14CommentLength", DoubleType, false) :: /*85*/ StructField("R15RevisionSubaction", StringType, false) ::
+          /*86*/ StructField("R16PrevReviSubaction", StringType, false) ::
+
+          Nil)
+
+      val rowRDD = Result_all_Features.map(line => line.split(",")).map(e ⇒ Row(e(0).toInt // character feature column
+      , e(1).toDouble, e(2).toDouble, e(3).toDouble, e(4).toDouble, e(5).toDouble, e(6).toDouble, e(7).toDouble, e(8).toDouble, e(9).toDouble, RoundDouble(e(10).toDouble),
+        e(11).toDouble, e(12).toDouble, e(13).toDouble, e(14).toDouble, e(15).toDouble, e(16).toDouble, e(17).toDouble, e(18).toDouble, e(19).toDouble, e(20).toDouble, e(21).toDouble, e(22).toDouble, e(23).toDouble, e(24).toDouble, e(25).toDouble //Word Feature column
+        , e(26).toDouble, e(27).toDouble, e(28).toDouble, e(29).toDouble.toInt, e(30).toDouble, e(31).toDouble, e(32).toDouble, e(33).toDouble, e(34).toDouble, e(35).toDouble, e(36).toDouble, e(37).toDouble, RoundDouble(e(38).toDouble), RoundDouble(e(39).toDouble), e(40).toDouble, e(41).toDouble, e(42).toDouble // Sentences Features column:
+        , RoundDouble(e(43).toDouble), e(44).toDouble, e(45).toDouble, e(46).toDouble //Statement Features Column: 
+        , e(47), e(48), e(49) // User Features Column: 
+        , e(50).toDouble, e(51).toDouble, e(52).toDouble, e(53).toDouble, e(54).toDouble, e(55).toDouble, e(56).toDouble, e(57).toDouble.toInt, e(58).toDouble, e(59).toDouble //Item Features column:
+        , e(60).toDouble, e(61).toDouble, e(62).toDouble, e(63).toDouble, e(64).toDouble, e(65).toDouble, e(66).toDouble, e(67).toDouble, e(68).toDouble, e(69).toDouble, "Q" + e(70).toDouble.toInt.toString() //Revision Features Column: 
+        , e(71), e(72), e(73).toDouble, e(74).toDouble, e(75), e(76), e(77).toDouble, e(78), e(79), e(80).toDouble, e(81), e(82).toDouble, e(83).toDouble, e(84).toDouble, e(85), e(86)))
+
+      //a.User Frequency:
+      //number of revisions a user has contributed
+      //val resu= DF_Tags.groupBy("contributorID").agg(count("Rid"))
+      DF_Tags.registerTempTable("TagesTable")
+      val ContributorFreq_for_Each_Revision_DF = sqlContext.sql("select contributorID as CIDUSER1, count(Rid) as NumberofRevisionsUserContributed from TagesTable where contributorID !='0' group by contributorID ") //.drop("CIDUSER1")
+      //ContributorFreq_for_Each_Revision_DF.show()
+
+      //b.Cumulated : Number of a unique Item a user has contributed.
+      val CumulatedNumberof_uniqueItemsForUser_DF = sqlContext.sql("select contributorID as CIDUSER2,  COUNT(DISTINCT itemid) as NumberofUniqueItemsUseredit from TagesTable where contributorID !='0' group by contributorID") //.drop("CIDUSER2")
+      //CumulatedNumberof_uniqueItemsForUser_DF.show()
+
+      //1.Item Frequency:
+      // number of revisions an Item has
+      val ItemFrequ_DF = sqlContext.sql("select itemid, count(Rid) as NumberRevisionItemHas from TagesTable  group by itemid")
+      // ItemFrequ_DF.show()
+
+      //2. Cumulate number of unique users have edited the Item : Did not consider the users IP. Contributor is an IP or Name. we consider name
+      val CumulatedNumberof_UniqueUserForItem_DF = sqlContext.sql("select itemid,  COUNT(DISTINCT contributorID) as NumberUniqUserEditItem from TagesTable where contributorID !='0' group by itemid")
+      //CumulatedNumberof_UniqueUserForItem_DF.show()
+
+      //3. freq each Item :
+      val Fre_Item_DF = sqlContext.sql("select itemid,  COUNT(itemid) as FreqItem from TagesTable  group by itemid")
+      // Fre_Item_DF.show()
+
+      //*****************************************************************************************************************************************
+      // This is Main DataFrame:
+      val BeforeJoin_All_Features = sqlContext.createDataFrame(rowRDD, schema)
+      //BeforeJoin_All_Features.show()
+
+      //********************************** User feature Join
+
+      // Join1 for add The first User Feature : number of revisions a user has contributed
+      val AfterJoinUser1_All_Features = BeforeJoin_All_Features.as("T1").join(ContributorFreq_for_Each_Revision_DF.as("T2"), $"T1.U8UserID" === $"T2.CIDUSER1", "leftouter").drop("CIDUSER1")
+      //AfterJoinUser1_All_Features.show()
+
+      // Join2 for add The second  User Feature
+      val AfterJoinUser2_All_Features = AfterJoinUser1_All_Features.as("T1").join(CumulatedNumberof_uniqueItemsForUser_DF.as("T2"), $"T1.U8UserID" === $"T2.CIDUSER2", "leftouter").drop("CIDUSER2")
+      //AfterJoinUser2_All_Features.show()
+
+      //********************************** Item Feature Join
+      // Join3 for add The First  Item Feature :number of revisions an Item has
+      val AfterJoinItem3_All_Features = AfterJoinUser2_All_Features.as("T1").join(ItemFrequ_DF.as("T2"), $"T1.I11ItemTitle" === $"T2.itemid", "leftouter").drop("itemid")
+      // AfterJoinItem3_All_Features.show()
+
+      // Join4 for add The Second  Item Feature
+      val AfterJoinItem4_All_Features = AfterJoinItem3_All_Features.as("T1").join(CumulatedNumberof_UniqueUserForItem_DF.as("T2"), $"T1.I11ItemTitle" === $"T2.itemid", "leftouter").drop("itemid")
+      // AfterJoinItem4_All_Features.show()
+
+      // Join5 for add The Third  Item Feature
+      val AfterJoinItem5_All_Features = AfterJoinItem4_All_Features.as("T1").join(Fre_Item_DF.as("T2"), $"T1.I11ItemTitle" === $"T2.itemid", "leftouter").drop("itemid")
+      //2 AfterJoinItem5_All_Features.show()
+
+      //********************************
+
+      //*Geografical information Feature from Meta File
+      //REVISION_ID|REVISION_SESSION_ID|USER_COUNTRY_CODE|USER_CONTINENT_CODE|USER_TIME_ZONE|USER_REGION_CODE|USER_CITY_NAME|USER_COUNTY_NAME|REVISION_TAGS
+      val df_GeoInf = sqlContext.read
+        .format("com.databricks.spark.csv")
+        .option("header", "true") // Use first line of all files as header
+        .option("inferSchema", "true") // Automatically infer data types
+        .load("hdfs://localhost:9000/mydata/Meta.csv").select("REVISION_ID", "REVISION_SESSION_ID", "USER_COUNTRY_CODE", "USER_CONTINENT_CODE", "USER_TIME_ZONE", "USER_REGION_CODE", "USER_CITY_NAME", "USER_COUNTY_NAME", "REVISION_TAGS")
+      // df_GeoInf.show()
+
+      val df_Truth = sqlContext.read
+        .format("com.databricks.spark.csv")
+        .option("header", "true") // Use first line of all files as header
+        .option("inferSchema", "true") // Automatically infer data types
+        .load("hdfs://localhost:9000/mydata/truth.csv").select("REVISION_ID", "ROLLBACK_REVERTED", "UNDO_RESTORE_REVERTED")
+      // df_GeoInf.show()
+
+      val AfterJoinGeoInfo_All_Features = AfterJoinItem5_All_Features.as("T1").join(df_GeoInf.as("T2"), $"T1.Rid" === $"T2.REVISION_ID", "leftouter").drop("REVISION_ID").cache()
+      // AfterJoinGeoInfo_All_Features.show()
+
+      val Final_All_Features = AfterJoinGeoInfo_All_Features.as("T1").join(df_Truth.as("T2"), $"T1.Rid" === $"T2.REVISION_ID", "leftouter").drop("REVISION_ID").cache()
+      //Final_All_Features.show()
+
+      // Pre- process Data ============================================================================================================================================================
+
+      // For String Column, We fill the Null values by "NA":
+
+      var Fill_Missing_Final_All_Features = Final_All_Features.na.fill("NA", Seq("USER_COUNTRY_CODE", "USER_CONTINENT_CODE", "USER_TIME_ZONE", "USER_REGION_CODE", "USER_CITY_NAME", "USER_COUNTY_NAME", "REVISION_TAGS")).cache()
+
+      // For Integer Frequency  Column, We fill the Null values by 0:
+      Fill_Missing_Final_All_Features = Fill_Missing_Final_All_Features.na.fill(0, Seq("FreqItem", "NumberUniqUserEditItem", "NumberRevisionItemHas", "NumberofUniqueItemsUseredit", "NumberofRevisionsUserContributed", "REVISION_SESSION_ID")).cache()
+      //Fill_Missing_Final_All_Features.show()
+
+      val BoolToDoubleUDF = udf { (BoolAsString: String) => if (BoolAsString == "T") 1.0 else 0.0 }
+      val IntegerToDouble = udf { (IntegerRevisionSessionID: Integer) => IntegerRevisionSessionID.toDouble }
+      Fill_Missing_Final_All_Features = Fill_Missing_Final_All_Features.withColumn("FinalROLLBACK_REVERTED", BoolToDoubleUDF(col("ROLLBACK_REVERTED")))
+      Fill_Missing_Final_All_Features = Fill_Missing_Final_All_Features.withColumn("FinalUNDO_RESTORE_REVERTED", BoolToDoubleUDF(col("UNDO_RESTORE_REVERTED")))
+
+      Fill_Missing_Final_All_Features = Fill_Missing_Final_All_Features.withColumn("FinalREVISION_SESSION_ID", IntegerToDouble(col("REVISION_SESSION_ID")))
+
+      Fill_Missing_Final_All_Features = Fill_Missing_Final_All_Features.withColumn("FinalNumberofRevisionsUserContributed", IntegerToDouble(col("NumberofRevisionsUserContributed")))
+      Fill_Missing_Final_All_Features = Fill_Missing_Final_All_Features.withColumn("FinalNumberofUniqueItemsUseredit", IntegerToDouble(col("NumberofUniqueItemsUseredit")))
+
+      Fill_Missing_Final_All_Features = Fill_Missing_Final_All_Features.withColumn("FinalNumberRevisionItemHas", IntegerToDouble(col("NumberRevisionItemHas")))
+      Fill_Missing_Final_All_Features = Fill_Missing_Final_All_Features.withColumn("FinalNumberUniqUserEditItem", IntegerToDouble(col("NumberUniqUserEditItem")))
+      Fill_Missing_Final_All_Features = Fill_Missing_Final_All_Features.withColumn("FinalFreqItem", IntegerToDouble(col("FreqItem")))
+
+      //===========================================================================Caharacter Features : Double , Integer Features ====================================================================================
+      //Double Ratio:  For Ratio Double column, Fill -1 value by Median:Character Features + Ratio of Word Features :
+      var Samples = Fill_Missing_Final_All_Features.sample(false, 0.001).cache() //.where($"S2SimikaritySitelinkandLabel">0.0 || $"S3SimilarityLabelandSitelink">0.0 || $"S4SimilarityCommentComment">0.0)
+      Samples.registerTempTable("df")
+
+      val Query = "select " +
+        "percentile_approx(C1uppercaseratio, 0.5) as meadian1" + "," + "percentile_approx(C2lowercaseratio, 0.5) as median2" + " ," +
+        "percentile_approx(C3alphanumericratio, 0.5) as median3" + "," + "percentile_approx(C4asciiratio, 0.5) as median4" + "," +
+        "percentile_approx(C5bracketratio, 0.5) as median5" + "," + "percentile_approx(C6digitalratio, 0.5) as median6" + "," +
+        "percentile_approx(C7latinratio, 0.5) as median7" + "," + "percentile_approx(C8whitespaceratio, 0.5) as median8" + "," +
+        "percentile_approx(C9puncratio, 0.5) as median9" + "," + "percentile_approx(C11arabicratio, 0.5) as median11" + "," +
+        "percentile_approx(C12bengaliratio, 0.5) as median12" + "," + "percentile_approx(C13brahmiratio, 0.5) as median13" + "," +
+        "percentile_approx(C14cyrilinratio, 0.5) as median14" + "," + "percentile_approx(C15hanratio, 0.5) as median15" + "," +
+        "percentile_approx(c16malysiaratio, 0.5) as median16" + "," +
+        "percentile_approx(C17tamiratio, 0.5) as median17" + "," + "percentile_approx(C18telugratio, 0.5) as median18" + "," +
+        "percentile_approx(C19symbolratio, 0.5) as median19" + "," + "percentile_approx(C20alpharatio, 0.5) as median20" + "," +
+        "percentile_approx(C21visibleratio, 0.5) as median21" + "," + "percentile_approx(C22printableratio, 0.5) as median22" + "," +
+        "percentile_approx(C23blankratio, 0.5) as median23" + "," + "percentile_approx(C24controlratio, 0.5) as median24" + "," +
+        "percentile_approx(C25hexaratio, 0.5) as median25" ++ "," + "percentile_approx(W1languagewordratio, 0.5) as median26" + "," +
+        "percentile_approx(W3lowercaseratio, 0.5) as median27" + "," + "percentile_approx(W6badwordratio, 0.5) as median28" + "," +
+        "percentile_approx(W7uppercaseratio, 0.5) as median27" + "," + "percentile_approx(W8banwordratio, 0.5) as median27" + " from df"
+
+      val medianValues = sqlContext.sql(Query).rdd
+      val Median = medianValues.first()
+
+      // Median :
+      // Character Ratio Features: UDF
+      val lkpUDF1 = udf { (i: Double) => if (i == 0) Median(0).toString().toDouble else i }
+      val lkpUDF2 = udf { (i: Double) => if (i == 0) Median(1).toString().toDouble else i }
+      val lkpUDF3 = udf { (i: Double) => if (i == 0) Median(2).toString().toDouble else i }
+      val lkpUDF4 = udf { (i: Double) => if (i == 0) Median(3).toString().toDouble else i }
+      val lkpUDF5 = udf { (i: Double) => if (i == 0) Median(4).toString().toDouble else i }
+      val lkpUDF6 = udf { (i: Double) => if (i == 0) Median(5).toString().toDouble else i }
+      val lkpUDF7 = udf { (i: Double) => if (i == 0) Median(6).toString().toDouble else i }
+      val lkpUDF8 = udf { (i: Double) => if (i == 0) Median(7).toString().toDouble else i }
+      val lkpUDF9 = udf { (i: Double) => if (i == 0) Median(8).toString().toDouble else i }
+
+      val lkpUDF11 = udf { (i: Double) => if (i == 0) Median(9).toString().toDouble else i }
+      val lkpUDF12 = udf { (i: Double) => if (i == 0) Median(10).toString().toDouble else i }
+      val lkpUDF13 = udf { (i: Double) => if (i == 0) Median(11).toString().toDouble else i }
+      val lkpUDF14 = udf { (i: Double) => if (i == 0) Median(12).toString().toDouble else i }
+      val lkpUDF15 = udf { (i: Double) => if (i == 0) Median(13).toString().toDouble else i }
+      val lkpUDF16 = udf { (i: Double) => if (i == 0) Median(14).toString().toDouble else i }
+      val lkpUDF17 = udf { (i: Double) => if (i == 0) Median(15).toString().toDouble else i }
+      val lkpUDF18 = udf { (i: Double) => if (i == 0) Median(16).toString().toDouble else i }
+      val lkpUDF19 = udf { (i: Double) => if (i == 0) Median(17).toString().toDouble else i }
+      val lkpUDF20 = udf { (i: Double) => if (i == 0) Median(18).toString().toDouble else i }
+      val lkpUDF21 = udf { (i: Double) => if (i == 0) Median(19).toString().toDouble else i }
+      val lkpUDF22 = udf { (i: Double) => if (i == 0) Median(20).toString().toDouble else i }
+      val lkpUDF23 = udf { (i: Double) => if (i == 0) Median(21).toString().toDouble else i }
+      val lkpUDF24 = udf { (i: Double) => if (i == 0) Median(22).toString().toDouble else i }
+      val lkpUDF25 = udf { (i: Double) => if (i == 0) Median(23).toString().toDouble else i }
+
+      val df1 = Fill_Missing_Final_All_Features.withColumn("FinalC1uppercaseratio", lkpUDF1(col("C1uppercaseratio"))) //.drop("C1uppercaseratio").cache()
+      val df2 = df1.withColumn("FinalC2lowercaseratio", lkpUDF2(col("C2lowercaseratio"))) //.drop("C2lowercaseratio").cache()
+      //df1.unpersist()
+      val df3 = df2.withColumn("FinalC3alphanumericratio", lkpUDF3(col("C3alphanumericratio"))) //.drop("C3alphanumericratio").cache()
+      //df2.unpersist()
+      val df4 = df3.withColumn("FinalC4asciiratio", lkpUDF4(col("C4asciiratio"))) //.drop("C4asciiratio").cache()
+      //df3.unpersist()
+      val df5 = df4.withColumn("FinalC5bracketratio", lkpUDF5(col("C5bracketratio"))) //.drop("C5bracketratio").cache()
+      //df4.unpersist()
+      val df6 = df5.withColumn("FinalC6digitalratio", lkpUDF6(col("C6digitalratio"))) //.drop("C6digitalratio").cache()
+      //df5.unpersist()
+      val df7 = df6.withColumn("FinalC7latinratio", lkpUDF7(col("C7latinratio"))) //.drop("C7latinratio").cache()
+      //df6.unpersist()
+      val df8 = df7.withColumn("FinalC8whitespaceratio", lkpUDF8(col("C8whitespaceratio"))) //.drop("C8whitespaceratio").cache()
+      //df7.unpersist()
+      val df9 = df8.withColumn("FinalC9puncratio", lkpUDF9(col("C9puncratio"))) //.drop("C9puncratio").cache()
+
+      // Mean :
+      // character integer values :
+      val Mean_C10longcharacterseq = Samples.agg(mean("C10longcharacterseq")).head()
+      val C10_Mean = Mean_C10longcharacterseq.getDouble(0)
+      val lkpUDFC10 = udf { (i: Double) => if (i == 0) C10_Mean else i }
+      val df10 = df9.withColumn("FinalC10longcharacterseq", lkpUDFC10(col("C10longcharacterseq")))
+
+      //Median
+      val df11 = df10.withColumn("FinalC11arabicratio", lkpUDF11(col("C11arabicratio"))) //.drop("C11arabicratio").cache()
+      // df9.unpersist()
+      val df12 = df11.withColumn("FinalC12bengaliratio", lkpUDF12(col("C12bengaliratio"))) //.drop("C12bengaliratio").cache()
+      //df11.unpersist()
+      val df13 = df12.withColumn("FinalC13brahmiratio", lkpUDF13(col("C13brahmiratio"))) //.drop("C13brahmiratio").cache()
+      // df12.unpersist()
+      val df14 = df13.withColumn("FinalC14cyrilinratio", lkpUDF14(col("C14cyrilinratio"))) //.drop("C14cyrilinratio").cache()
+      // df13.unpersist()
+      val df15 = df14.withColumn("FinalC15hanratio", lkpUDF15(col("C15hanratio"))) //.drop("C15hanratio").cache()
+      // df14.unpersist()
+      val df16 = df15.withColumn("Finalc16malysiaratio", lkpUDF16(col("c16malysiaratio"))) //.drop("c16malysiaratio").cache()
+      //df15.unpersist()
+      val df17 = df16.withColumn("FinalC17tamiratio", lkpUDF17(col("C17tamiratio"))) //.drop("C17tamiratio").cache()
+      //df16.unpersist()
+      val df18 = df17.withColumn("FinalC18telugratio", lkpUDF18(col("C18telugratio"))) //.drop("C18telugratio").cache()
+      //df17.unpersist()
+      val df19 = df18.withColumn("FinalC19symbolratio", lkpUDF19(col("C19symbolratio"))) //.drop("C19symbolratio").cache()
+      //df18.unpersist()
+      val df20 = df19.withColumn("FinalC20alpharatio", lkpUDF20(col("C20alpharatio"))) //.drop("C20alpharatio").cache()
+      // df19.unpersist()
+      val df21 = df20.withColumn("FinalC21visibleratio", lkpUDF21(col("C21visibleratio"))) //.drop("C21visibleratio").cache()
+      // df20.unpersist()
+      val df22 = df21.withColumn("FinalC22printableratio", lkpUDF22(col("C22printableratio"))) //.drop("C22printableratio").cache()
+      //df21.unpersist()
+      val df23 = df22.withColumn("FinalC23blankratio", lkpUDF23(col("C23blankratio"))) //.drop("C23blankratio").cache()
+      // df22.unpersist()
+      val df24 = df23.withColumn("FinalC24controlratio", lkpUDF24(col("C24controlratio"))) //.drop("C24controlratio").cache()
+      //df23.unpersist()
+      val df25 = df24.withColumn("FinalC25hexaratio", lkpUDF25(col("C25hexaratio"))) //.drop("C25hexaratio").cache()
+
+      //************************************************End Character Features ****************************************************************************************
+
+      //************************************************Start Word  Features ****************************************************************************************
+
+      // Word Ratio Features : UDF
+      val lkpUDFW1 = udf { (i: Double) => if (i == 0) Median(24).toString().toDouble else i }
+      val lkpUDFW3 = udf { (i: Double) => if (i == 0) Median(25).toString().toDouble else i }
+      val lkpUDFW6 = udf { (i: Double) => if (i == 0) Median(26).toString().toDouble else i }
+      val lkpUDFW7 = udf { (i: Double) => if (i == 0) Median(27).toString().toDouble else i }
+      val lkpUDFW8 = udf { (i: Double) => if (i == 0) Median(28).toString().toDouble else i }
+
+      //1.
+      val df26 = df25.withColumn("FinalW1languagewordratio", lkpUDFW1(col("W1languagewordratio"))) //.drop("W1languagewordratio").cache()
+
+      //2.Boolean(Double) IsContainLanguageWord
+
+      //3.
+      val df27 = df26.withColumn("FinalW3lowercaseratio", lkpUDFW3(col("W3lowercaseratio"))) //.drop("W3lowercaseratio").cache()
+      // df26.unpersist()
+
+      //4. Integer " Mean:
+      val Mean_W4longestword = Samples.agg(mean("W4longestword")).head()
+      val W4_Mean = Mean_W4longestword.getDouble(0)
+      val lkpUDFW4 = udf { (i: Double) => if (i == 0) W4_Mean else i }
+      val df28 = df27.withColumn("FinalW4longestword", lkpUDFW4(col("W4longestword")))
+
+      //5. Boolean (Double ) W5IscontainURL
+      //6.
+      val df29 = df28.withColumn("FinalW6badwordratio", lkpUDFW6(col("W6badwordratio"))) //.drop("W6badwordratio").cache()
+
+      //7.
+      val df30 = df29.withColumn("FinalW7uppercaseratio", lkpUDFW7(col("W7uppercaseratio"))) //.drop("W7uppercaseratio").cache()
+
+      //8.
+      val df31 = df30.withColumn("FinalW8banwordratio", lkpUDFW8(col("W8banwordratio"))) //.drop("W8banwordratio").cache()
+
+      //9.FemalFirst       Boolean(Double)
+      //10.Male First      Boolean(Double)
+      //11.ContainBadWord  Boolean(Double)
+      //12ContainBanWord   Boolean(Double)
+
+      //13. Integer(Double):
+      val Mean_W13W13NumberSharewords = Samples.agg(mean("W13NumberSharewords")).head()
+      val W13_Mean = Mean_W13W13NumberSharewords.getDouble(0)
+      val lkpUDFW13 = udf { (i: Double) => if (i == 0) W13_Mean else i }
+      val df32 = df31.withColumn("FinalW13NumberSharewords", lkpUDFW13(col("W13NumberSharewords")))
+
+      //14. Integer (Double):
+      val Mean_W14NumberSharewordswithoutStopwords = Samples.agg(mean("W14NumberSharewordswithoutStopwords")).head()
+      val W14_Mean = Mean_W14NumberSharewordswithoutStopwords.getDouble(0)
+      val lkpUDFW14 = udf { (i: Double) => if (i == 0) W14_Mean else i }
+      val df33 = df32.withColumn("FinalW14NumberSharewordswithoutStopwords", lkpUDFW14(col("W14NumberSharewordswithoutStopwords")))
+
+      // 15. Double (Not ratio):
+      val Mean_W15PortionQid = Samples.agg(mean("W15PortionQid")).head()
+      val W15_Mean = Mean_W15PortionQid.getDouble(0)
+      val lkpUDFW15 = udf { (i: Double) => if (i == 0) W15_Mean else i }
+      val df34 = df33.withColumn("FinalW15PortionQid", lkpUDFW15(col("W15PortionQid")))
+
+      //16. Double(Not Ratio):
+      val Mean_W16PortionLnags = Samples.agg(mean("W16PortionLnags")).head()
+      val W16_Mean = Mean_W16PortionLnags.getDouble(0)
+      val lkpUDFW16 = udf { (i: Double) => if (i == 0) W16_Mean else i }
+      val df35 = df34.withColumn("FinalW16PortionLnags", lkpUDFW16(col("W16PortionLnags")))
+
+      //17.Double(Not ratio):
+      val Mean_W17PortionLinks = Samples.agg(mean("W17PortionLinks")).head()
+      val W17_Mean = Mean_W17PortionLinks.getDouble(0)
+      val lkpUDFW17 = udf { (i: Double) => if (i == 0) W17_Mean else i }
+      val df36 = df35.withColumn("FinalW17PortionLinks", lkpUDFW17(col("W17PortionLinks")))
+
+      //************************************************End Word  Features ****************************************************************************************
+
+      //************************************************Start Sentences  Features ****************************************************************************************
+      // 1. Integer(Double)
+      val Mean_S1CommentTailLength = Samples.agg(mean("S1CommentTailLength")).head()
+      val S1_Mean = RoundDouble(Mean_S1CommentTailLength.getDouble(0))
+      val lkpUDFS1 = udf { (i: Double) => if (i == 0) S1_Mean else i }
+      val df37 = df36.withColumn("FinalS1CommentTailLength", lkpUDFS1(col("S1CommentTailLength")))
+
+      //2. Double  but Not ratio values :
+      val Mean_S2SimikaritySitelinkandLabel = Samples.agg(mean("S2SimikaritySitelinkandLabel")).head()
+      val S2_Mean = RoundDouble(Mean_S2SimikaritySitelinkandLabel.getDouble(0))
+      val lkpUDFS2 = udf { (i: Double) => if (i == 0) S2_Mean else i }
+      val df39 = df37.withColumn("FinalS2SimikaritySitelinkandLabel", lkpUDFS2(col("S2SimikaritySitelinkandLabel")))
+
+      //3. Double  but Not ratio values :
+      val Mean_S3SimilarityLabelandSitelink = Samples.agg(mean("S3SimilarityLabelandSitelink")).head()
+      val S3_Mean = RoundDouble(Mean_S3SimilarityLabelandSitelink.getDouble(0))
+      val lkpUDFS3 = udf { (i: Double) => if (i == 0.0) S3_Mean else i }
+      val df40 = df39.withColumn("FinalS3SimilarityLabelandSitelink", lkpUDFS3(col("S3SimilarityLabelandSitelink")))
+
+      //4.  Double  but Not ratio values :
+      val Mean_S4SimilarityCommentComment = Samples.agg(mean("S4SimilarityCommentComment")).head()
+      val S4_Mean = RoundDouble(Mean_S4SimilarityCommentComment.getDouble(0))
+      val lkpUDFS4 = udf { (i: Double) => if (i == 0.0) S4_Mean else i }
+      val df41 = df40.withColumn("FinalS4SimilarityCommentComment", lkpUDFS4(col("S4SimilarityCommentComment")))
+
+      //df41.show()
+      //************************************************End Sentences  Features ****************************************************************************************
+      //*********************************************** Start Statement  Features ****************************************************************************************
+      //1. String
+      //2. String
+      //3. String
+      //************************************************End Statement  Features ****************************************************************************************
+      //*********************************************** Start User Features ****************************************************************************************
+
+      //1.Boolean(Double)
+      //2.Boolean(Double)
+      //3.Boolean(Double)
+      //4.Boolean(Double)
+      //5.Boolean(Double)
+      //6.Boolean(Double)
+      //7. (Double) IP No need to fill Missing Data
+      //8. (Double) ID No need to fill Missing Data
+      //9.Boolean(Double)
+      //10.Boolean(Double)
+
+      //*********************************************** End User Features ****************************************************************************************
+      //*********************************************** Start Item Features ****************************************************************************************
+      //1. Integer (Double) No need to fill missing values
+      //2. Integer (Double) No need to fill missing values
+      //3. Integer (Double) No need to fill missing values
+      //4. Integer (Double) No need to fill missing values
+      //5. Integer (Double) No need to fill missing values
+      //6. Integer (Double) No need to fill missing values
+      //7. Integer (Double) No need to fill missing values
+      //8. Integer (Double) No need to fill missing values
+      //9. Integer (Double) No need to fill missing values
+      //10. Integer (Double) No need to fill missing values
+      //11. String
+      //*********************************************** End Item Features ****************************************************************************************
+      //*********************************************** Start Revision Features ****************************************************************************************
+      //1.String
+      //2.String
+      //3.Boolean (Double)
+      //4.Integer(Double)
+      //5.String
+      //6.String
+      //7. Boolean(Double)
+      //8. String
+      //9.String
+      //10. Integer (Double)
+      //11.String
+      //12. integer(Double)
+      //13. Long(Double)
+      //14. integer (Double)
+      //15.String
+      //16.String
+      //*********************************************** End Revision Features ****************************************************************************************
+      //*********************************************** Meta Data , Truth Data and Frequnces  ****************************************************************************************
+      //Meta
+      // 1.Revision Session :Integer (Converted to Double)
+      //2. User Country Code
+      //3.User Continent Code
+      //4.User Time Size
+      //5.User Region Code
+      //6.User-city Name
+      //7.User Country Name
+      //8.RevisionTags
+
+      // Truth:
+      //1.Undo
+
+      // Freq :
+
+      //1.5 features
+
+      // Roll Boolean     :Boolean (Double)
+      // Undo             :Boolean (Double)
+
+      //*********************************************** End Revision Features ****************************************************************************************
+
+      //===========================================================================String Features====================================================================================
+
+      val df42 = df41.withColumn(
+        //statement String features:
+        "StringFeatures", concat($"SS1Property", lit(";"), $"SS2DataValue", lit(";"), $"SS3ItemValue", lit(";"), $"I11ItemTitle",
+          //Revision  String Features:
+          lit(";"), $"R1languageRevision",
+          lit(";"), $"R2RevisionLanguageLocal",
+          lit(";"), $"R5RevisionAction",
+          lit(";"), $"R6PrevReviAction",
+          lit(";"), $"R8ParRevision",
+          lit(";"), $"R9RevisionTime",
+          lit(";"), $"R11ContentType",
+          lit(";"), $"R15RevisionSubaction",
+          lit(";"), $"R16PrevReviSubaction",
+
+          lit(";"), $"USER_COUNTRY_CODE",
+          lit(";"), $"USER_CONTINENT_CODE",
+          lit(";"), $"USER_TIME_ZONE",
+          lit(";"), $"USER_REGION_CODE",
+          lit(";"), $"USER_CITY_NAME",
+          lit(";"), $"USER_COUNTY_NAME",
+          lit(";"), $"REVISION_TAGS"))
+
+      val toArray = udf((record: String) => record.split(";").map(_.toString()))
+      val test1 = df42.withColumn("StringFeatures", toArray(col("StringFeatures")))
+      //  test1.show()
+      //  test1.printSchema()
+
+      val word2Vec = new Word2Vec().setInputCol("StringFeatures").setOutputCol("result").setVectorSize(20).setMinCount(0)
+      val model = word2Vec.fit(test1)
+      val result = model.transform(test1) //.rdd
+
+      // result.show()
+
+      val Todense = udf((b: Vector) => b.toDense)
+      val test_new2 = result.withColumn("result", Todense(col("result")))
+
+      val assembler = new VectorAssembler().setInputCols(Array(
+        "result",
+
+        // character
+        "FinalC1uppercaseratio", "FinalC2lowercaseratio", "FinalC3alphanumericratio", "FinalC4asciiratio", "FinalC5bracketratio", "FinalC6digitalratio",
+        "FinalC7latinratio", "FinalC8whitespaceratio", "FinalC9puncratio", "FinalC10longcharacterseq", "FinalC11arabicratio", "FinalC12bengaliratio",
+        "FinalC13brahmiratio", "FinalC14cyrilinratio", "FinalC15hanratio", "Finalc16malysiaratio", "FinalC17tamiratio", "FinalC18telugratio",
+        "FinalC19symbolratio", "FinalC20alpharatio", "FinalC21visibleratio", "FinalC22printableratio", "FinalC23blankratio", "FinalC24controlratio", "FinalC25hexaratio",
+
+        // Words
+        "FinalW1languagewordratio", "W2Iscontainlanguageword", "FinalW3lowercaseratio", "FinalW4longestword", "W5IscontainURL", "FinalW6badwordratio",
+        "FinalW7uppercaseratio", "FinalW8banwordratio", "W9FemalFirstName", "W10MaleFirstName", "W11IscontainBadword", "W12IsContainBanword",
+        "FinalW13NumberSharewords", "FinalW14NumberSharewordswithoutStopwords", "FinalW15PortionQid", "FinalW16PortionLnags", "FinalW17PortionLinks",
+
+        //Sentences :
+        "FinalS1CommentTailLength", "FinalS2SimikaritySitelinkandLabel", "FinalS3SimilarityLabelandSitelink", "FinalS4SimilarityCommentComment",
+
+        // User :
+        "U1IsPrivileged", "U2IsBotUser", "U3IsBotuserWithFlaguser", "U4IsProperty", "U5IsTranslator", "U6IsRegister", "U7IPValue", "U8UserID",
+        "U9HasBirthDate", "U10HasDeathDate",
+
+        //Item:
+
+        "I1NumberLabels", "I2NumberDescription", "I3NumberAliases", "I4NumberClaims", "I5NumberSitelinks", "I6NumberStatement",
+        "I7NumberReferences", "I8NumberQualifier", "I9NumberQualifierOrder", "I10NumberBadges",
+
+        //Revision:
+        "R3IslatainLanguage", "R4JsonLength", "R7RevisionAccountChange", "R10RevisionSize", "R12BytesIncrease",
+        "R13TimeSinceLastRevi", "R14CommentLength",
+
+        // Meta , truth , Freq
+        // meta :
+        "FinalREVISION_SESSION_ID",
+        // Truth:
+        "FinalUNDO_RESTORE_REVERTED",
+
+        //Freq:
+        "FinalNumberofRevisionsUserContributed",
+        "FinalNumberofUniqueItemsUseredit", "FinalNumberRevisionItemHas", "FinalNumberUniqUserEditItem", "FinalFreqItem")).setOutputCol("features")
+      val Testing_Data = assembler.transform(test_new2)
+
+      // Prepare the data for classification:
+    //  NewData.registerTempTable("DB")
+    //  val Training_Data = sqlContext.sql("select Rid, features, FinalROLLBACK_REVERTED  from DB")
+     //val Data = sqlContext.sql("select Rid, features, FinalROLLBACK_REVERTED as label from DB") // for logistic regrision
+
+      //Data.show()
+
+    //  val TestClassifiers = new Classifiers()
+//
+      //  TestClassifiers.RandomForestClassifer(Testing_Data, sqlContext)
+//      // TestClassifiers.DecisionTreeClassifier(Data, sqlContext)
+//      // TestClassifiers.LogisticRegrision(Data, sqlContext)
+//      // TestClassifiers.GradientBoostedTree(Data, sqlContext)
+//      // TestClassifiers.MultilayerPerceptronClassifier(Data, sqlContext)
+
+    Testing_Data
+   
+    
+  }
+  
+  
+  
+  
+  def Triger(sc: SparkContext): Unit = {
+
+//    val sqlContext = new org.apache.spark.sql.SQLContext(sc)
+//    import sqlContext.implicits._
+//    import org.apache.spark.sql.functions._ // for UDF
+//    import org.apache.spark.sql.types._
+//
+//    //*******************************************************************************************************************************
+//    println("Please Enter 0 for JTriple and  1 for TRIX  process and 2 for RDFXML process and 3 for NormalXML:")
+//    val num = scala.io.StdIn.readLine()
+//
+//    if (num == "0") {
+//      println("JTriple.........!!!!!!")
+//      // Streaming records:RDFJtriple file :
+//      val jobConf = new JobConf()
+//
+//      val JTriple_Parser_OBJ = new ParseJTriple()
+//      val DRF_Builder_JTripleOBJ = new FacilitiesClass()
+//      val RDD_JTriple = JTriple_Parser_OBJ.Start_JTriple_Parser(jobConf, sc)
+//      RDD_JTriple.foreach(println)
+//      //----------------------------DF for RDF TRIX ------------------------------------------
+//      //  Create SQLContext Object:
+//      val sqlContext = new org.apache.spark.sql.SQLContext(sc)
+//      val DFR_JTriple = DRF_Builder_JTripleOBJ.RDD_TO_DFR_JTriple(RDD_JTriple, sqlContext)
+//      DFR_JTriple.show()
+//
+//    }
+
+//    if (num == "1") {
+//
+//      println("TRIX.........!!!!!!")
+//      // Streaming records:RDFTRIX file :
+//      val jobConf = new JobConf()
+//
+//      val TRIX_Parser_OBJ = new ParseTRIX()
+//      val DRF_Builder_RDFTRIX_OBJ = new FacilitiesClass()
+//
+//      val RDD_TRIX = TRIX_Parser_OBJ.Start_TriX_Parser(jobConf, sc)
+//      RDD_TRIX.foreach(println)
+//
+//      //----------------------------DF for RDF TRIX ------------------------------------------
+//      //  Create SQLContext Object:
+//      val sqlContext = new org.apache.spark.sql.SQLContext(sc)
+//      val DFR_TRIX = DRF_Builder_RDFTRIX_OBJ.RDD_TO_DFR_TRIX(RDD_TRIX, sqlContext)
+//      DFR_TRIX.show()
+//
+//    } //RDF XML file :*********************************************************************************************************
+//    else if (num == "2") {
+//      println("RDF XML .........!!!!!!")
+//      // Streaming records:RDFXML file :
+//      val jobConf_Record = new JobConf()
+//      val jobConf_Prefixes = new JobConf()
+//
+//      val RDFXML_Parser_OBJ = new ParseRDFXML()
+//      val DRF_Builder_RDFXML_OBJ = new FacilitiesClass()
+//
+//      val RDD_RDFXML = RDFXML_Parser_OBJ.start_RDFXML_Parser(jobConf_Record, jobConf_Prefixes, sc)
+//      RDD_RDFXML.foreach(println)
+//
+//      //----------------------------DF for RDF XML ------------------------------------------
+//      //  Create SQLContext Object:
+//      val sqlContext = new org.apache.spark.sql.SQLContext(sc)
+//      val DFR_RDF_XML = DRF_Builder_RDFXML_OBJ.RDD_TO_DFR_RDFXML(RDD_RDFXML, sqlContext)
+//      DFR_RDF_XML.show()
+//      //
+//      // NOrmal XML Example WikiData: ***************************************************************************************************
+//    } else if (num == "3") {
+      // Streaming records:
+//      val jobConf = new JobConf()
+//      val NormalXML_Parser_OBJ = new ParseNormalXML()
+//      val RDD_OBJ = new ParseNormalXML()
+//      val RDD_All_Record1 = RDD_OBJ.Training_DB_NormalXML_Parser_Input1(sc)
+//      val RDD_All_Record2 = RDD_OBJ.Training_DB_NormalXML_Parser_Input2(sc)
+//      val RDD_All_Record3 = RDD_OBJ.Training_DB_NormalXML_Parser_Input3(sc)
+//      //RDD_All_Record1.foreach(println)
+//      //RDD_All_Record2.foreach(println)
+//      // RDD_All_Record3.foreach(println)
+//
+//      val RDD_All_Record = RDD_All_Record1.union(RDD_All_Record2).union(RDD_All_Record3).distinct().cache()
+//
+//      //println(RDD_All_Record.count())
+//      // println(RDD_All_Record.count())
+//
+//      // ======= Json part :
+//      //Json RDD : Each record has its Revision iD:
+//      val JsonRDD = RDD_All_Record.map(_.split("NNLL")).map(v => replacing_with_Quoto(v(0), v(8))).cache()
+//      //JsonRDD.foreach(println)
+//      //println(JsonRDD.count())
+//
+//      // Data set
+//      val Ds_Json = sqlContext.jsonRDD(JsonRDD).select("key", "id", "labels", "descriptions", "aliases", "claims", "sitelinks").cache()
+//      //Ds_Json.show()
+//      // println(Ds_Json.count())
+//
+//      // ======= Tags part : // Contributor IP here is in Decimal format not IP format and It is converted in ParseNormalXml stage
+//      val TagsRDD = RDD_All_Record.map(_.split("NNLL")).map(x => (x(0), x(1), x(2), x(3), x(4), x(5), x(6), x(7), x(8), x(9), x(10), x(11))).cache()
+//      val DF_Tags = TagsRDD.toDF("Rid", "Itemid", "comment", "pid", "time", "contributorIP", "contributorID", "contributorName", "JsonText", "model", "format", "sha").cache()
+//      //    DF_Tags.show()
+//      //    println(DF_Tags.count())
+//
+//      //======== Join Json part with Tag Part:============================
+//      //Joining to have full data
+//      val DF_First_DF_Result_Join_Tags_and_Json = DF_Tags.as("T1").join(Ds_Json.as("T2"), $"T1.Rid" === $"T2.key", "leftouter").select("Rid", "itemid", "comment", "pid", "time", "contributorIP", "contributorID", "contributorName", "JsonText", "labels", "descriptions", "aliases", "claims", "sitelinks", "model", "format", "sha") //.orderBy("Rid", "Itemid")
+//      DF_First_DF_Result_Join_Tags_and_Json.registerTempTable("Data1")
+//      val dfr_DATA_JsonTages1 = sqlContext.sql("select * from Data1 order by itemid ,Rid ").cache()
+//
+//      val colNames = Seq("Rid2", "itemid2", "comment2", "pid2", "time2", "contributorIP2", "contributorID2", "contributorName2", "JsonText2", "labels2", "descriptions2", "aliases2", "claims2", "sitelinks2", "model2", "format2", "sha2")
+//      val DF_Second = DF_First_DF_Result_Join_Tags_and_Json.toDF(colNames: _*) //.distinct()
+//      DF_Second.registerTempTable("Data2")
+//
+//      //===================================================================Parent // Previous Revision==============================================================================================================
+//      //val DF_Joined = result1.as("df1").join(result2.as("df2"), col("itemid") === col("itemid2") && col("index1") === col("index2") + 1, "leftouter").select("Rid", "itemid", "comment", "pid", "time", "contributorIP", "contributorID", "contributorName", "JsonText", "labels", "descriptions", "aliases", "claims", "sitelinks", "model", "format", "sha", "Rid2", "itemid2", "comment2", "pid2", "time2", "contributorIP2", "contributorID2", "contributorName2", "JsonText2", "labels2", "descriptions2", "aliases2", "claims2", "sitelinks2", "model2", "format2", "sha2")
+//      //.select("itemid", "Rid","pid","time","itemid2","Rid2","pid2","time2")
+//
+//      //Joining based on Parent Id to get the previous cases: ParentID
+//      val DF_Joined = DF_First_DF_Result_Join_Tags_and_Json.as("df1").join(DF_Second.as("df2"), $"df1.pid" === $"df2.Rid2", "leftouter").distinct()
+//
+//      val RDD_After_JoinDF = DF_Joined.rdd.distinct()
+//      val x = RDD_After_JoinDF.map(row => (row(0).toString().toInt, row)).cache()
+//      val part = new RangePartitioner(4, x)
+//      val partitioned = x.partitionBy(part).persist() // persist is important for this case and obligatory.
+//      //partitioned.foreach(println)
+//      //
+//      //      //=====================================================All Features Based on Categories of Features Data Type :==================================================================================
+//      //
+//      val Result_all_Features = partitioned.map { case (x, y) => (x.toString() + "," + All_Features(y).toString()) } // we convert the Pair RDD to String one LineRDD to be able to make DF based on ","
+//      //Result_all_Features.foreach(println)
+//      // println("nayef" + Result_all_Features.count())
+//
+//      // Conver the RDD of All Features to  DataFrame:
+//
+//      val schema = StructType(
+//
+//        //0
+//        StructField("Rid", IntegerType, false) ::
+//
+//          // Character Features :
+//          /* 1*/ StructField("C1uppercaseratio", DoubleType, false) :: /*2 */ StructField("C2lowercaseratio", DoubleType, false) :: /*3*/ StructField("C3alphanumericratio", DoubleType, false) ::
+//          /*4*/ StructField("C4asciiratio", DoubleType, false) :: /*5*/ StructField("C5bracketratio", DoubleType, false) :: /*6*/ StructField("C6digitalratio", DoubleType, false) ::
+//          /*7*/ StructField("C7latinratio", DoubleType, false) :: /*8*/ StructField("C8whitespaceratio", DoubleType, false) :: /* 9*/ StructField("C9puncratio", DoubleType, false) ::
+//          /*10*/ StructField("C10longcharacterseq", DoubleType, false) :: /*11*/ StructField("C11arabicratio", DoubleType, false) :: /*12*/ StructField("C12bengaliratio", DoubleType, false) ::
+//          /*13 */ StructField("C13brahmiratio", DoubleType, false) :: /*14*/ StructField("C14cyrilinratio", DoubleType, false) :: /*15*/ StructField("C15hanratio", DoubleType, false) ::
+//          /*16*/ StructField("c16malysiaratio", DoubleType, false) :: /*17*/ StructField("C17tamiratio", DoubleType, false) :: /*18*/ StructField("C18telugratio", DoubleType, false) ::
+//          /*19 */ StructField("C19symbolratio", DoubleType, false) :: /*20 */ StructField("C20alpharatio", DoubleType, false) :: /*21*/ StructField("C21visibleratio", DoubleType, false) ::
+//          /*22*/ StructField("C22printableratio", DoubleType, false) :: /*23*/ StructField("C23blankratio", DoubleType, false) :: /*24 */ StructField("C24controlratio", DoubleType, false) ::
+//          /* 25 */ StructField("C25hexaratio", DoubleType, false) ::
+//
+//          //word Features:
+//          /*26*/ StructField("W1languagewordratio", DoubleType, false) :: /*27 Boolean */ StructField("W2Iscontainlanguageword", DoubleType, false) :: /*28*/ StructField("W3lowercaseratio", DoubleType, false) ::
+//          /*29 Integer */ StructField("W4longestword", IntegerType, false) :: /*30 Boolean */ StructField("W5IscontainURL", DoubleType, false) :: /*31*/ StructField("W6badwordratio", DoubleType, false) ::
+//          /*32*/ StructField("W7uppercaseratio", DoubleType, false) :: /*33*/ StructField("W8banwordratio", DoubleType, false) :: /*34 Boolean */ StructField("W9FemalFirstName", DoubleType, false) ::
+//          /*35 Boolean */ StructField("W10MaleFirstName", DoubleType, false) :: /*36 Boolean */ StructField("W11IscontainBadword", DoubleType, false) :: /*37 Boolean*/ StructField("W12IsContainBanword", DoubleType, false) ::
+//          /*38 integer */ StructField("W13NumberSharewords", DoubleType, false) :: /*39 Integer */ StructField("W14NumberSharewordswithoutStopwords", DoubleType, false) ::
+//          /*40*/ StructField("W15PortionQid", DoubleType, false) :: /*41*/ StructField("W16PortionLnags", DoubleType, false) :: /*42*/ StructField("W17PortionLinks", DoubleType, false) ::
+//
+//          //
+//          //          // Sentences Features:
+//          /*43*/ StructField("S1CommentTailLength", DoubleType, false) :: /*44*/ StructField("S2SimikaritySitelinkandLabel", DoubleType, false) :: /*45*/ StructField("S3SimilarityLabelandSitelink", DoubleType, false) :: /*46*/ StructField("S4SimilarityCommentComment", DoubleType, false) ::
+//          //
+//          //          // Statements Features :
+//          /*47*/ StructField("SS1Property", StringType, false) :: /*48*/ StructField("SS2DataValue", StringType, false) :: /*49*/ StructField("SS3ItemValue", StringType, false) ::
+//          //
+//          //
+//          //        //User Features :
+//          /*50 Boolean*/ StructField("U1IsPrivileged", DoubleType, false) :: /*51 Boolean*/ StructField("U2IsBotUser", DoubleType, false) :: /*52 Boolean*/ StructField("U3IsBotuserWithFlaguser", DoubleType, false) ::
+//          /*53 Boolean*/ StructField("U4IsProperty", DoubleType, false) :: /*54 Boolean*/ StructField("U5IsTranslator", DoubleType, false) :: /*55 Boolean*/ StructField("U6IsRegister", DoubleType, false) ::
+//          /*56*/ StructField("U7IPValue", DoubleType, false) :: /*57*/ StructField("U8UserID", IntegerType, false) :: /*58*/ StructField("U9HasBirthDate", DoubleType, false) :: /*59*/ StructField("U10HasDeathDate", DoubleType, false) ::
+//
+//          //Items Features :
+//
+//          /*60*/ StructField("I1NumberLabels", DoubleType, false) :: /*61*/ StructField("I2NumberDescription", DoubleType, false) :: /*62*/ StructField("I3NumberAliases", DoubleType, false) :: /*63*/ StructField("I4NumberClaims", DoubleType, false) ::
+//          /*64*/ StructField("I5NumberSitelinks", DoubleType, false) :: /*65*/ StructField("I6NumberStatement", DoubleType, false) :: /*66*/ StructField("I7NumberReferences", DoubleType, false) :: /*67*/ StructField("I8NumberQualifier", DoubleType, false) ::
+//          /*68*/ StructField("I9NumberQualifierOrder", DoubleType, false) :: /*69*/ StructField("I10NumberBadges", DoubleType, false) :: /*70*/ StructField("I11ItemTitle", StringType, false) ::
+//
+//          // Revision Features:
+//          /*71*/ StructField("R1languageRevision", StringType, false) :: /*72*/ StructField("R2RevisionLanguageLocal", StringType, false) :: /*73*/ StructField("R3IslatainLanguage", DoubleType, false) ::
+//          /*74*/ StructField("R4JsonLength", DoubleType, false) :: /*75*/ StructField("R5RevisionAction", StringType, false) :: /*76*/ StructField("R6PrevReviAction", StringType, false) ::
+//          /*77*/ StructField("R7RevisionAccountChange", DoubleType, false) :: /*78*/ StructField("R8ParRevision", StringType, false) :: /*79*/ StructField("R9RevisionTime", StringType, false) ::
+//          /*80*/ StructField("R10RevisionSize", DoubleType, false) :: /*81*/ StructField("R11ContentType", StringType, false) :: /*82*/ StructField("R12BytesIncrease", DoubleType, false) ::
+//          /*83*/ StructField("R13TimeSinceLastRevi", DoubleType, false) :: /*84*/ StructField("R14CommentLength", DoubleType, false) :: /*85*/ StructField("R15RevisionSubaction", StringType, false) ::
+//          /*86*/ StructField("R16PrevReviSubaction", StringType, false) ::
+//
+//          Nil)
+//
+//      val rowRDD = Result_all_Features.map(line => line.split(",")).map(e ⇒ Row(e(0).toInt // character feature column
+//      , e(1).toDouble, e(2).toDouble, e(3).toDouble, e(4).toDouble, e(5).toDouble, e(6).toDouble, e(7).toDouble, e(8).toDouble, e(9).toDouble, RoundDouble(e(10).toDouble),
+//        e(11).toDouble, e(12).toDouble, e(13).toDouble, e(14).toDouble, e(15).toDouble, e(16).toDouble, e(17).toDouble, e(18).toDouble, e(19).toDouble, e(20).toDouble, e(21).toDouble, e(22).toDouble, e(23).toDouble, e(24).toDouble, e(25).toDouble //Word Feature column
+//        , e(26).toDouble, e(27).toDouble, e(28).toDouble, e(29).toDouble.toInt, e(30).toDouble, e(31).toDouble, e(32).toDouble, e(33).toDouble, e(34).toDouble, e(35).toDouble, e(36).toDouble, e(37).toDouble, RoundDouble(e(38).toDouble), RoundDouble(e(39).toDouble), e(40).toDouble, e(41).toDouble, e(42).toDouble // Sentences Features column:
+//        , RoundDouble(e(43).toDouble), e(44).toDouble, e(45).toDouble, e(46).toDouble //Statement Features Column: 
+//        , e(47), e(48), e(49) // User Features Column: 
+//        , e(50).toDouble, e(51).toDouble, e(52).toDouble, e(53).toDouble, e(54).toDouble, e(55).toDouble, e(56).toDouble, e(57).toDouble.toInt, e(58).toDouble, e(59).toDouble //Item Features column:
+//        , e(60).toDouble, e(61).toDouble, e(62).toDouble, e(63).toDouble, e(64).toDouble, e(65).toDouble, e(66).toDouble, e(67).toDouble, e(68).toDouble, e(69).toDouble, "Q" + e(70).toDouble.toInt.toString() //Revision Features Column: 
+//        , e(71), e(72), e(73).toDouble, e(74).toDouble, e(75), e(76), e(77).toDouble, e(78), e(79), e(80).toDouble, e(81), e(82).toDouble, e(83).toDouble, e(84).toDouble, e(85), e(86)))
+//
+//      //a.User Frequency:
+//      //number of revisions a user has contributed
+//      //val resu= DF_Tags.groupBy("contributorID").agg(count("Rid"))
+//      DF_Tags.registerTempTable("TagesTable")
+//      val ContributorFreq_for_Each_Revision_DF = sqlContext.sql("select contributorID as CIDUSER1, count(Rid) as NumberofRevisionsUserContributed from TagesTable where contributorID !='0' group by contributorID ") //.drop("CIDUSER1")
+//      //ContributorFreq_for_Each_Revision_DF.show()
+//
+//      //b.Cumulated : Number of a unique Item a user has contributed.
+//      val CumulatedNumberof_uniqueItemsForUser_DF = sqlContext.sql("select contributorID as CIDUSER2,  COUNT(DISTINCT itemid) as NumberofUniqueItemsUseredit from TagesTable where contributorID !='0' group by contributorID") //.drop("CIDUSER2")
+//      //CumulatedNumberof_uniqueItemsForUser_DF.show()
+//
+//      //1.Item Frequency:
+//      // number of revisions an Item has
+//      val ItemFrequ_DF = sqlContext.sql("select itemid, count(Rid) as NumberRevisionItemHas from TagesTable  group by itemid")
+//      // ItemFrequ_DF.show()
+//
+//      //2. Cumulate number of unique users have edited the Item : Did not consider the users IP. Contributor is an IP or Name. we consider name
+//      val CumulatedNumberof_UniqueUserForItem_DF = sqlContext.sql("select itemid,  COUNT(DISTINCT contributorID) as NumberUniqUserEditItem from TagesTable where contributorID !='0' group by itemid")
+//      //CumulatedNumberof_UniqueUserForItem_DF.show()
+//
+//      //3. freq each Item :
+//      val Fre_Item_DF = sqlContext.sql("select itemid,  COUNT(itemid) as FreqItem from TagesTable  group by itemid")
+//      // Fre_Item_DF.show()
+//
+//      //*****************************************************************************************************************************************
+//      // This is Main DataFrame:
+//      val BeforeJoin_All_Features = sqlContext.createDataFrame(rowRDD, schema)
+//      //BeforeJoin_All_Features.show()
+//
+//      //********************************** User feature Join
+//
+//      // Join1 for add The first User Feature : number of revisions a user has contributed
+//      val AfterJoinUser1_All_Features = BeforeJoin_All_Features.as("T1").join(ContributorFreq_for_Each_Revision_DF.as("T2"), $"T1.U8UserID" === $"T2.CIDUSER1", "leftouter").drop("CIDUSER1")
+//      //AfterJoinUser1_All_Features.show()
+//
+//      // Join2 for add The second  User Feature
+//      val AfterJoinUser2_All_Features = AfterJoinUser1_All_Features.as("T1").join(CumulatedNumberof_uniqueItemsForUser_DF.as("T2"), $"T1.U8UserID" === $"T2.CIDUSER2", "leftouter").drop("CIDUSER2")
+//      //AfterJoinUser2_All_Features.show()
+//
+//      //********************************** Item Feature Join
+//      // Join3 for add The First  Item Feature :number of revisions an Item has
+//      val AfterJoinItem3_All_Features = AfterJoinUser2_All_Features.as("T1").join(ItemFrequ_DF.as("T2"), $"T1.I11ItemTitle" === $"T2.itemid", "leftouter").drop("itemid")
+//      // AfterJoinItem3_All_Features.show()
+//
+//      // Join4 for add The Second  Item Feature
+//      val AfterJoinItem4_All_Features = AfterJoinItem3_All_Features.as("T1").join(CumulatedNumberof_UniqueUserForItem_DF.as("T2"), $"T1.I11ItemTitle" === $"T2.itemid", "leftouter").drop("itemid")
+//      // AfterJoinItem4_All_Features.show()
+//
+//      // Join5 for add The Third  Item Feature
+//      val AfterJoinItem5_All_Features = AfterJoinItem4_All_Features.as("T1").join(Fre_Item_DF.as("T2"), $"T1.I11ItemTitle" === $"T2.itemid", "leftouter").drop("itemid")
+//      //2 AfterJoinItem5_All_Features.show()
+//
+//      //********************************
+//
+//      //*Geografical information Feature from Meta File
+//      //REVISION_ID|REVISION_SESSION_ID|USER_COUNTRY_CODE|USER_CONTINENT_CODE|USER_TIME_ZONE|USER_REGION_CODE|USER_CITY_NAME|USER_COUNTY_NAME|REVISION_TAGS
+//      val df_GeoInf = sqlContext.read
+//        .format("com.databricks.spark.csv")
+//        .option("header", "true") // Use first line of all files as header
+//        .option("inferSchema", "true") // Automatically infer data types
+//        .load("hdfs://localhost:9000/mydata/Meta.csv").select("REVISION_ID", "REVISION_SESSION_ID", "USER_COUNTRY_CODE", "USER_CONTINENT_CODE", "USER_TIME_ZONE", "USER_REGION_CODE", "USER_CITY_NAME", "USER_COUNTY_NAME", "REVISION_TAGS")
+//      // df_GeoInf.show()
+//
+//      val df_Truth = sqlContext.read
+//        .format("com.databricks.spark.csv")
+//        .option("header", "true") // Use first line of all files as header
+//        .option("inferSchema", "true") // Automatically infer data types
+//        .load("hdfs://localhost:9000/mydata/truth.csv").select("REVISION_ID", "ROLLBACK_REVERTED", "UNDO_RESTORE_REVERTED")
+//      // df_GeoInf.show()
+//
+//      val AfterJoinGeoInfo_All_Features = AfterJoinItem5_All_Features.as("T1").join(df_GeoInf.as("T2"), $"T1.Rid" === $"T2.REVISION_ID", "leftouter").drop("REVISION_ID").cache()
+//      // AfterJoinGeoInfo_All_Features.show()
+//
+//      val Final_All_Features = AfterJoinGeoInfo_All_Features.as("T1").join(df_Truth.as("T2"), $"T1.Rid" === $"T2.REVISION_ID", "leftouter").drop("REVISION_ID").cache()
+//      //Final_All_Features.show()
+//
+//      // Pre- process Data ============================================================================================================================================================
+//
+//      // For String Column, We fill the Null values by "NA":
+//
+//      var Fill_Missing_Final_All_Features = Final_All_Features.na.fill("NA", Seq("USER_COUNTRY_CODE", "USER_CONTINENT_CODE", "USER_TIME_ZONE", "USER_REGION_CODE", "USER_CITY_NAME", "USER_COUNTY_NAME", "REVISION_TAGS")).cache()
+//
+//      // For Integer Frequency  Column, We fill the Null values by 0:
+//      Fill_Missing_Final_All_Features = Fill_Missing_Final_All_Features.na.fill(0, Seq("FreqItem", "NumberUniqUserEditItem", "NumberRevisionItemHas", "NumberofUniqueItemsUseredit", "NumberofRevisionsUserContributed", "REVISION_SESSION_ID")).cache()
+//      //Fill_Missing_Final_All_Features.show()
+//
+//      val BoolToDoubleUDF = udf { (BoolAsString: String) => if (BoolAsString == "T") 1.0 else 0.0 }
+//      val IntegerToDouble = udf { (IntegerRevisionSessionID: Integer) => IntegerRevisionSessionID.toDouble }
+//      Fill_Missing_Final_All_Features = Fill_Missing_Final_All_Features.withColumn("FinalROLLBACK_REVERTED", BoolToDoubleUDF(col("ROLLBACK_REVERTED")))
+//      Fill_Missing_Final_All_Features = Fill_Missing_Final_All_Features.withColumn("FinalUNDO_RESTORE_REVERTED", BoolToDoubleUDF(col("UNDO_RESTORE_REVERTED")))
+//
+//      Fill_Missing_Final_All_Features = Fill_Missing_Final_All_Features.withColumn("FinalREVISION_SESSION_ID", IntegerToDouble(col("REVISION_SESSION_ID")))
+//
+//      Fill_Missing_Final_All_Features = Fill_Missing_Final_All_Features.withColumn("FinalNumberofRevisionsUserContributed", IntegerToDouble(col("NumberofRevisionsUserContributed")))
+//      Fill_Missing_Final_All_Features = Fill_Missing_Final_All_Features.withColumn("FinalNumberofUniqueItemsUseredit", IntegerToDouble(col("NumberofUniqueItemsUseredit")))
+//
+//      Fill_Missing_Final_All_Features = Fill_Missing_Final_All_Features.withColumn("FinalNumberRevisionItemHas", IntegerToDouble(col("NumberRevisionItemHas")))
+//      Fill_Missing_Final_All_Features = Fill_Missing_Final_All_Features.withColumn("FinalNumberUniqUserEditItem", IntegerToDouble(col("NumberUniqUserEditItem")))
+//      Fill_Missing_Final_All_Features = Fill_Missing_Final_All_Features.withColumn("FinalFreqItem", IntegerToDouble(col("FreqItem")))
+//
+//      //===========================================================================Caharacter Features : Double , Integer Features ====================================================================================
+//      //Double Ratio:  For Ratio Double column, Fill -1 value by Median:Character Features + Ratio of Word Features :
+//      var Samples = Fill_Missing_Final_All_Features.sample(false, 0.001).cache() //.where($"S2SimikaritySitelinkandLabel">0.0 || $"S3SimilarityLabelandSitelink">0.0 || $"S4SimilarityCommentComment">0.0)
+//      Samples.registerTempTable("df")
+//
+//      val Query = "select " +
+//        "percentile_approx(C1uppercaseratio, 0.5) as meadian1" + "," + "percentile_approx(C2lowercaseratio, 0.5) as median2" + " ," +
+//        "percentile_approx(C3alphanumericratio, 0.5) as median3" + "," + "percentile_approx(C4asciiratio, 0.5) as median4" + "," +
+//        "percentile_approx(C5bracketratio, 0.5) as median5" + "," + "percentile_approx(C6digitalratio, 0.5) as median6" + "," +
+//        "percentile_approx(C7latinratio, 0.5) as median7" + "," + "percentile_approx(C8whitespaceratio, 0.5) as median8" + "," +
+//        "percentile_approx(C9puncratio, 0.5) as median9" + "," + "percentile_approx(C11arabicratio, 0.5) as median11" + "," +
+//        "percentile_approx(C12bengaliratio, 0.5) as median12" + "," + "percentile_approx(C13brahmiratio, 0.5) as median13" + "," +
+//        "percentile_approx(C14cyrilinratio, 0.5) as median14" + "," + "percentile_approx(C15hanratio, 0.5) as median15" + "," +
+//        "percentile_approx(c16malysiaratio, 0.5) as median16" + "," +
+//        "percentile_approx(C17tamiratio, 0.5) as median17" + "," + "percentile_approx(C18telugratio, 0.5) as median18" + "," +
+//        "percentile_approx(C19symbolratio, 0.5) as median19" + "," + "percentile_approx(C20alpharatio, 0.5) as median20" + "," +
+//        "percentile_approx(C21visibleratio, 0.5) as median21" + "," + "percentile_approx(C22printableratio, 0.5) as median22" + "," +
+//        "percentile_approx(C23blankratio, 0.5) as median23" + "," + "percentile_approx(C24controlratio, 0.5) as median24" + "," +
+//        "percentile_approx(C25hexaratio, 0.5) as median25" ++ "," + "percentile_approx(W1languagewordratio, 0.5) as median26" + "," +
+//        "percentile_approx(W3lowercaseratio, 0.5) as median27" + "," + "percentile_approx(W6badwordratio, 0.5) as median28" + "," +
+//        "percentile_approx(W7uppercaseratio, 0.5) as median27" + "," + "percentile_approx(W8banwordratio, 0.5) as median27" + " from df"
+//
+//      val medianValues = sqlContext.sql(Query).rdd
+//      val Median = medianValues.first()
+//
+//      // Median :
+//      // Character Ratio Features: UDF
+//      val lkpUDF1 = udf { (i: Double) => if (i == 0) Median(0).toString().toDouble else i }
+//      val lkpUDF2 = udf { (i: Double) => if (i == 0) Median(1).toString().toDouble else i }
+//      val lkpUDF3 = udf { (i: Double) => if (i == 0) Median(2).toString().toDouble else i }
+//      val lkpUDF4 = udf { (i: Double) => if (i == 0) Median(3).toString().toDouble else i }
+//      val lkpUDF5 = udf { (i: Double) => if (i == 0) Median(4).toString().toDouble else i }
+//      val lkpUDF6 = udf { (i: Double) => if (i == 0) Median(5).toString().toDouble else i }
+//      val lkpUDF7 = udf { (i: Double) => if (i == 0) Median(6).toString().toDouble else i }
+//      val lkpUDF8 = udf { (i: Double) => if (i == 0) Median(7).toString().toDouble else i }
+//      val lkpUDF9 = udf { (i: Double) => if (i == 0) Median(8).toString().toDouble else i }
+//
+//      val lkpUDF11 = udf { (i: Double) => if (i == 0) Median(9).toString().toDouble else i }
+//      val lkpUDF12 = udf { (i: Double) => if (i == 0) Median(10).toString().toDouble else i }
+//      val lkpUDF13 = udf { (i: Double) => if (i == 0) Median(11).toString().toDouble else i }
+//      val lkpUDF14 = udf { (i: Double) => if (i == 0) Median(12).toString().toDouble else i }
+//      val lkpUDF15 = udf { (i: Double) => if (i == 0) Median(13).toString().toDouble else i }
+//      val lkpUDF16 = udf { (i: Double) => if (i == 0) Median(14).toString().toDouble else i }
+//      val lkpUDF17 = udf { (i: Double) => if (i == 0) Median(15).toString().toDouble else i }
+//      val lkpUDF18 = udf { (i: Double) => if (i == 0) Median(16).toString().toDouble else i }
+//      val lkpUDF19 = udf { (i: Double) => if (i == 0) Median(17).toString().toDouble else i }
+//      val lkpUDF20 = udf { (i: Double) => if (i == 0) Median(18).toString().toDouble else i }
+//      val lkpUDF21 = udf { (i: Double) => if (i == 0) Median(19).toString().toDouble else i }
+//      val lkpUDF22 = udf { (i: Double) => if (i == 0) Median(20).toString().toDouble else i }
+//      val lkpUDF23 = udf { (i: Double) => if (i == 0) Median(21).toString().toDouble else i }
+//      val lkpUDF24 = udf { (i: Double) => if (i == 0) Median(22).toString().toDouble else i }
+//      val lkpUDF25 = udf { (i: Double) => if (i == 0) Median(23).toString().toDouble else i }
+//
+//      val df1 = Fill_Missing_Final_All_Features.withColumn("FinalC1uppercaseratio", lkpUDF1(col("C1uppercaseratio"))) //.drop("C1uppercaseratio").cache()
+//      val df2 = df1.withColumn("FinalC2lowercaseratio", lkpUDF2(col("C2lowercaseratio"))) //.drop("C2lowercaseratio").cache()
+//      //df1.unpersist()
+//      val df3 = df2.withColumn("FinalC3alphanumericratio", lkpUDF3(col("C3alphanumericratio"))) //.drop("C3alphanumericratio").cache()
+//      //df2.unpersist()
+//      val df4 = df3.withColumn("FinalC4asciiratio", lkpUDF4(col("C4asciiratio"))) //.drop("C4asciiratio").cache()
+//      //df3.unpersist()
+//      val df5 = df4.withColumn("FinalC5bracketratio", lkpUDF5(col("C5bracketratio"))) //.drop("C5bracketratio").cache()
+//      //df4.unpersist()
+//      val df6 = df5.withColumn("FinalC6digitalratio", lkpUDF6(col("C6digitalratio"))) //.drop("C6digitalratio").cache()
+//      //df5.unpersist()
+//      val df7 = df6.withColumn("FinalC7latinratio", lkpUDF7(col("C7latinratio"))) //.drop("C7latinratio").cache()
+//      //df6.unpersist()
+//      val df8 = df7.withColumn("FinalC8whitespaceratio", lkpUDF8(col("C8whitespaceratio"))) //.drop("C8whitespaceratio").cache()
+//      //df7.unpersist()
+//      val df9 = df8.withColumn("FinalC9puncratio", lkpUDF9(col("C9puncratio"))) //.drop("C9puncratio").cache()
+//
+//      // Mean :
+//      // character integer values :
+//      val Mean_C10longcharacterseq = Samples.agg(mean("C10longcharacterseq")).head()
+//      val C10_Mean = Mean_C10longcharacterseq.getDouble(0)
+//      val lkpUDFC10 = udf { (i: Double) => if (i == 0) C10_Mean else i }
+//      val df10 = df9.withColumn("FinalC10longcharacterseq", lkpUDFC10(col("C10longcharacterseq")))
+//
+//      //Median
+//      val df11 = df10.withColumn("FinalC11arabicratio", lkpUDF11(col("C11arabicratio"))) //.drop("C11arabicratio").cache()
+//      // df9.unpersist()
+//      val df12 = df11.withColumn("FinalC12bengaliratio", lkpUDF12(col("C12bengaliratio"))) //.drop("C12bengaliratio").cache()
+//      //df11.unpersist()
+//      val df13 = df12.withColumn("FinalC13brahmiratio", lkpUDF13(col("C13brahmiratio"))) //.drop("C13brahmiratio").cache()
+//      // df12.unpersist()
+//      val df14 = df13.withColumn("FinalC14cyrilinratio", lkpUDF14(col("C14cyrilinratio"))) //.drop("C14cyrilinratio").cache()
+//      // df13.unpersist()
+//      val df15 = df14.withColumn("FinalC15hanratio", lkpUDF15(col("C15hanratio"))) //.drop("C15hanratio").cache()
+//      // df14.unpersist()
+//      val df16 = df15.withColumn("Finalc16malysiaratio", lkpUDF16(col("c16malysiaratio"))) //.drop("c16malysiaratio").cache()
+//      //df15.unpersist()
+//      val df17 = df16.withColumn("FinalC17tamiratio", lkpUDF17(col("C17tamiratio"))) //.drop("C17tamiratio").cache()
+//      //df16.unpersist()
+//      val df18 = df17.withColumn("FinalC18telugratio", lkpUDF18(col("C18telugratio"))) //.drop("C18telugratio").cache()
+//      //df17.unpersist()
+//      val df19 = df18.withColumn("FinalC19symbolratio", lkpUDF19(col("C19symbolratio"))) //.drop("C19symbolratio").cache()
+//      //df18.unpersist()
+//      val df20 = df19.withColumn("FinalC20alpharatio", lkpUDF20(col("C20alpharatio"))) //.drop("C20alpharatio").cache()
+//      // df19.unpersist()
+//      val df21 = df20.withColumn("FinalC21visibleratio", lkpUDF21(col("C21visibleratio"))) //.drop("C21visibleratio").cache()
+//      // df20.unpersist()
+//      val df22 = df21.withColumn("FinalC22printableratio", lkpUDF22(col("C22printableratio"))) //.drop("C22printableratio").cache()
+//      //df21.unpersist()
+//      val df23 = df22.withColumn("FinalC23blankratio", lkpUDF23(col("C23blankratio"))) //.drop("C23blankratio").cache()
+//      // df22.unpersist()
+//      val df24 = df23.withColumn("FinalC24controlratio", lkpUDF24(col("C24controlratio"))) //.drop("C24controlratio").cache()
+//      //df23.unpersist()
+//      val df25 = df24.withColumn("FinalC25hexaratio", lkpUDF25(col("C25hexaratio"))) //.drop("C25hexaratio").cache()
+//
+//      //************************************************End Character Features ****************************************************************************************
+//
+//      //************************************************Start Word  Features ****************************************************************************************
+//
+//      // Word Ratio Features : UDF
+//      val lkpUDFW1 = udf { (i: Double) => if (i == 0) Median(24).toString().toDouble else i }
+//      val lkpUDFW3 = udf { (i: Double) => if (i == 0) Median(25).toString().toDouble else i }
+//      val lkpUDFW6 = udf { (i: Double) => if (i == 0) Median(26).toString().toDouble else i }
+//      val lkpUDFW7 = udf { (i: Double) => if (i == 0) Median(27).toString().toDouble else i }
+//      val lkpUDFW8 = udf { (i: Double) => if (i == 0) Median(28).toString().toDouble else i }
+//
+//      //1.
+//      val df26 = df25.withColumn("FinalW1languagewordratio", lkpUDFW1(col("W1languagewordratio"))) //.drop("W1languagewordratio").cache()
+//
+//      //2.Boolean(Double) IsContainLanguageWord
+//
+//      //3.
+//      val df27 = df26.withColumn("FinalW3lowercaseratio", lkpUDFW3(col("W3lowercaseratio"))) //.drop("W3lowercaseratio").cache()
+//      // df26.unpersist()
+//
+//      //4. Integer " Mean:
+//      val Mean_W4longestword = Samples.agg(mean("W4longestword")).head()
+//      val W4_Mean = Mean_W4longestword.getDouble(0)
+//      val lkpUDFW4 = udf { (i: Double) => if (i == 0) W4_Mean else i }
+//      val df28 = df27.withColumn("FinalW4longestword", lkpUDFW4(col("W4longestword")))
+//
+//      //5. Boolean (Double ) W5IscontainURL
+//      //6.
+//      val df29 = df28.withColumn("FinalW6badwordratio", lkpUDFW6(col("W6badwordratio"))) //.drop("W6badwordratio").cache()
+//
+//      //7.
+//      val df30 = df29.withColumn("FinalW7uppercaseratio", lkpUDFW7(col("W7uppercaseratio"))) //.drop("W7uppercaseratio").cache()
+//
+//      //8.
+//      val df31 = df30.withColumn("FinalW8banwordratio", lkpUDFW8(col("W8banwordratio"))) //.drop("W8banwordratio").cache()
+//
+//      //9.FemalFirst       Boolean(Double)
+//      //10.Male First      Boolean(Double)
+//      //11.ContainBadWord  Boolean(Double)
+//      //12ContainBanWord   Boolean(Double)
+//
+//      //13. Integer(Double):
+//      val Mean_W13W13NumberSharewords = Samples.agg(mean("W13NumberSharewords")).head()
+//      val W13_Mean = Mean_W13W13NumberSharewords.getDouble(0)
+//      val lkpUDFW13 = udf { (i: Double) => if (i == 0) W13_Mean else i }
+//      val df32 = df31.withColumn("FinalW13NumberSharewords", lkpUDFW13(col("W13NumberSharewords")))
+//
+//      //14. Integer (Double):
+//      val Mean_W14NumberSharewordswithoutStopwords = Samples.agg(mean("W14NumberSharewordswithoutStopwords")).head()
+//      val W14_Mean = Mean_W14NumberSharewordswithoutStopwords.getDouble(0)
+//      val lkpUDFW14 = udf { (i: Double) => if (i == 0) W14_Mean else i }
+//      val df33 = df32.withColumn("FinalW14NumberSharewordswithoutStopwords", lkpUDFW14(col("W14NumberSharewordswithoutStopwords")))
+//
+//      // 15. Double (Not ratio):
+//      val Mean_W15PortionQid = Samples.agg(mean("W15PortionQid")).head()
+//      val W15_Mean = Mean_W15PortionQid.getDouble(0)
+//      val lkpUDFW15 = udf { (i: Double) => if (i == 0) W15_Mean else i }
+//      val df34 = df33.withColumn("FinalW15PortionQid", lkpUDFW15(col("W15PortionQid")))
+//
+//      //16. Double(Not Ratio):
+//      val Mean_W16PortionLnags = Samples.agg(mean("W16PortionLnags")).head()
+//      val W16_Mean = Mean_W16PortionLnags.getDouble(0)
+//      val lkpUDFW16 = udf { (i: Double) => if (i == 0) W16_Mean else i }
+//      val df35 = df34.withColumn("FinalW16PortionLnags", lkpUDFW16(col("W16PortionLnags")))
+//
+//      //17.Double(Not ratio):
+//      val Mean_W17PortionLinks = Samples.agg(mean("W17PortionLinks")).head()
+//      val W17_Mean = Mean_W17PortionLinks.getDouble(0)
+//      val lkpUDFW17 = udf { (i: Double) => if (i == 0) W17_Mean else i }
+//      val df36 = df35.withColumn("FinalW17PortionLinks", lkpUDFW17(col("W17PortionLinks")))
+//
+//      //************************************************End Word  Features ****************************************************************************************
+//
+//      //************************************************Start Sentences  Features ****************************************************************************************
+//      // 1. Integer(Double)
+//      val Mean_S1CommentTailLength = Samples.agg(mean("S1CommentTailLength")).head()
+//      val S1_Mean = RoundDouble(Mean_S1CommentTailLength.getDouble(0))
+//      val lkpUDFS1 = udf { (i: Double) => if (i == 0) S1_Mean else i }
+//      val df37 = df36.withColumn("FinalS1CommentTailLength", lkpUDFS1(col("S1CommentTailLength")))
+//
+//      //2. Double  but Not ratio values :
+//      val Mean_S2SimikaritySitelinkandLabel = Samples.agg(mean("S2SimikaritySitelinkandLabel")).head()
+//      val S2_Mean = RoundDouble(Mean_S2SimikaritySitelinkandLabel.getDouble(0))
+//      val lkpUDFS2 = udf { (i: Double) => if (i == 0) S2_Mean else i }
+//      val df39 = df37.withColumn("FinalS2SimikaritySitelinkandLabel", lkpUDFS2(col("S2SimikaritySitelinkandLabel")))
+//
+//      //3. Double  but Not ratio values :
+//      val Mean_S3SimilarityLabelandSitelink = Samples.agg(mean("S3SimilarityLabelandSitelink")).head()
+//      val S3_Mean = RoundDouble(Mean_S3SimilarityLabelandSitelink.getDouble(0))
+//      val lkpUDFS3 = udf { (i: Double) => if (i == 0.0) S3_Mean else i }
+//      val df40 = df39.withColumn("FinalS3SimilarityLabelandSitelink", lkpUDFS3(col("S3SimilarityLabelandSitelink")))
+//
+//      //4.  Double  but Not ratio values :
+//      val Mean_S4SimilarityCommentComment = Samples.agg(mean("S4SimilarityCommentComment")).head()
+//      val S4_Mean = RoundDouble(Mean_S4SimilarityCommentComment.getDouble(0))
+//      val lkpUDFS4 = udf { (i: Double) => if (i == 0.0) S4_Mean else i }
+//      val df41 = df40.withColumn("FinalS4SimilarityCommentComment", lkpUDFS4(col("S4SimilarityCommentComment")))
+//
+//      //df41.show()
+//      //************************************************End Sentences  Features ****************************************************************************************
+//      //*********************************************** Start Statement  Features ****************************************************************************************
+//      //1. String
+//      //2. String
+//      //3. String
+//      //************************************************End Statement  Features ****************************************************************************************
+//      //*********************************************** Start User Features ****************************************************************************************
+//
+//      //1.Boolean(Double)
+//      //2.Boolean(Double)
+//      //3.Boolean(Double)
+//      //4.Boolean(Double)
+//      //5.Boolean(Double)
+//      //6.Boolean(Double)
+//      //7. (Double) IP No need to fill Missing Data
+//      //8. (Double) ID No need to fill Missing Data
+//      //9.Boolean(Double)
+//      //10.Boolean(Double)
+//
+//      //*********************************************** End User Features ****************************************************************************************
+//      //*********************************************** Start Item Features ****************************************************************************************
+//      //1. Integer (Double) No need to fill missing values
+//      //2. Integer (Double) No need to fill missing values
+//      //3. Integer (Double) No need to fill missing values
+//      //4. Integer (Double) No need to fill missing values
+//      //5. Integer (Double) No need to fill missing values
+//      //6. Integer (Double) No need to fill missing values
+//      //7. Integer (Double) No need to fill missing values
+//      //8. Integer (Double) No need to fill missing values
+//      //9. Integer (Double) No need to fill missing values
+//      //10. Integer (Double) No need to fill missing values
+//      //11. String
+//      //*********************************************** End Item Features ****************************************************************************************
+//      //*********************************************** Start Revision Features ****************************************************************************************
+//      //1.String
+//      //2.String
+//      //3.Boolean (Double)
+//      //4.Integer(Double)
+//      //5.String
+//      //6.String
+//      //7. Boolean(Double)
+//      //8. String
+//      //9.String
+//      //10. Integer (Double)
+//      //11.String
+//      //12. integer(Double)
+//      //13. Long(Double)
+//      //14. integer (Double)
+//      //15.String
+//      //16.String
+//      //*********************************************** End Revision Features ****************************************************************************************
+//      //*********************************************** Meta Data , Truth Data and Frequnces  ****************************************************************************************
+//      //Meta
+//      // 1.Revision Session :Integer (Converted to Double)
+//      //2. User Country Code
+//      //3.User Continent Code
+//      //4.User Time Size
+//      //5.User Region Code
+//      //6.User-city Name
+//      //7.User Country Name
+//      //8.RevisionTags
+//
+//      // Truth:
+//      //1.Undo
+//
+//      // Freq :
+//
+//      //1.5 features
+//
+//      // Roll Boolean     :Boolean (Double)
+//      // Undo             :Boolean (Double)
+//
+//      //*********************************************** End Revision Features ****************************************************************************************
+//
+//      //===========================================================================String Features====================================================================================
+//
+//      val df42 = df41.withColumn(
+//        //statement String features:
+//        "StringFeatures", concat($"SS1Property", lit(";"), $"SS2DataValue", lit(";"), $"SS3ItemValue", lit(";"), $"I11ItemTitle",
+//          //Revision  String Features:
+//          lit(";"), $"R1languageRevision",
+//          lit(";"), $"R2RevisionLanguageLocal",
+//          lit(";"), $"R5RevisionAction",
+//          lit(";"), $"R6PrevReviAction",
+//          lit(";"), $"R8ParRevision",
+//          lit(";"), $"R9RevisionTime",
+//          lit(";"), $"R11ContentType",
+//          lit(";"), $"R15RevisionSubaction",
+//          lit(";"), $"R16PrevReviSubaction",
+//
+//          lit(";"), $"USER_COUNTRY_CODE",
+//          lit(";"), $"USER_CONTINENT_CODE",
+//          lit(";"), $"USER_TIME_ZONE",
+//          lit(";"), $"USER_REGION_CODE",
+//          lit(";"), $"USER_CITY_NAME",
+//          lit(";"), $"USER_COUNTY_NAME",
+//          lit(";"), $"REVISION_TAGS"))
+//
+//      val toArray = udf((record: String) => record.split(";").map(_.toString()))
+//      val test1 = df42.withColumn("StringFeatures", toArray(col("StringFeatures")))
+//      //  test1.show()
+//      //  test1.printSchema()
+//
+//      val word2Vec = new Word2Vec().setInputCol("StringFeatures").setOutputCol("result").setVectorSize(20).setMinCount(0)
+//      val model = word2Vec.fit(test1)
+//      val result = model.transform(test1) //.rdd
+//
+//      // result.show()
+//
+//      val Todense = udf((b: Vector) => b.toDense)
+//      val test_new2 = result.withColumn("result", Todense(col("result")))
+//
+//      val assembler = new VectorAssembler().setInputCols(Array(
+//        "result",
+//
+//        // character
+//        "FinalC1uppercaseratio", "FinalC2lowercaseratio", "FinalC3alphanumericratio", "FinalC4asciiratio", "FinalC5bracketratio", "FinalC6digitalratio",
+//        "FinalC7latinratio", "FinalC8whitespaceratio", "FinalC9puncratio", "FinalC10longcharacterseq", "FinalC11arabicratio", "FinalC12bengaliratio",
+//        "FinalC13brahmiratio", "FinalC14cyrilinratio", "FinalC15hanratio", "Finalc16malysiaratio", "FinalC17tamiratio", "FinalC18telugratio",
+//        "FinalC19symbolratio", "FinalC20alpharatio", "FinalC21visibleratio", "FinalC22printableratio", "FinalC23blankratio", "FinalC24controlratio", "FinalC25hexaratio",
+//
+//        // Words
+//        "FinalW1languagewordratio", "W2Iscontainlanguageword", "FinalW3lowercaseratio", "FinalW4longestword", "W5IscontainURL", "FinalW6badwordratio",
+//        "FinalW7uppercaseratio", "FinalW8banwordratio", "W9FemalFirstName", "W10MaleFirstName", "W11IscontainBadword", "W12IsContainBanword",
+//        "FinalW13NumberSharewords", "FinalW14NumberSharewordswithoutStopwords", "FinalW15PortionQid", "FinalW16PortionLnags", "FinalW17PortionLinks",
+//
+//        //Sentences :
+//        "FinalS1CommentTailLength", "FinalS2SimikaritySitelinkandLabel", "FinalS3SimilarityLabelandSitelink", "FinalS4SimilarityCommentComment",
+//
+//        // User :
+//        "U1IsPrivileged", "U2IsBotUser", "U3IsBotuserWithFlaguser", "U4IsProperty", "U5IsTranslator", "U6IsRegister", "U7IPValue", "U8UserID",
+//        "U9HasBirthDate", "U10HasDeathDate",
+//
+//        //Item:
+//
+//        "I1NumberLabels", "I2NumberDescription", "I3NumberAliases", "I4NumberClaims", "I5NumberSitelinks", "I6NumberStatement",
+//        "I7NumberReferences", "I8NumberQualifier", "I9NumberQualifierOrder", "I10NumberBadges",
+//
+//        //Revision:
+//        "R3IslatainLanguage", "R4JsonLength", "R7RevisionAccountChange", "R10RevisionSize", "R12BytesIncrease",
+//        "R13TimeSinceLastRevi", "R14CommentLength",
+//
+//        // Meta , truth , Freq
+//        // meta :
+//        "FinalREVISION_SESSION_ID",
+//        // Truth:
+//        "FinalUNDO_RESTORE_REVERTED",
+//
+//        //Freq:
+//        "FinalNumberofRevisionsUserContributed",
+//        "FinalNumberofUniqueItemsUseredit", "FinalNumberRevisionItemHas", "FinalNumberUniqUserEditItem", "FinalFreqItem")).setOutputCol("features")
+//      val NewData = assembler.transform(test_new2)
+//
+//      // Prepare the data for classification:
+//      NewData.registerTempTable("DB")
+//      val Data = sqlContext.sql("select Rid, features, FinalROLLBACK_REVERTED  from DB")
+//      //        val Data = sqlContext.sql("select Rid, features, FinalROLLBACK_REVERTED as label from DB") // for logistic regrision
+//
+//      //Data.show()
+//
+//      val TestClassifiers = new Classifiers()
+//
+//      // TestClassifiers.RandomForestClassifer(Data, sqlContext)
+//      // TestClassifiers.DecisionTreeClassifier(Data, sqlContext)
+//      // TestClassifiers.LogisticRegrision(Data, sqlContext)
+//      // TestClassifiers.GradientBoostedTree(Data, sqlContext)
+//      // TestClassifiers.MultilayerPerceptronClassifier(Data, sqlContext)
+//
+//    }
+  }
+  //===========================================================================================================================================
+  //=================================================Functions Part=============================================================================
+
+  def Ration(va: Double, median: Double): Double = {
+
+    var tem = va
+    if (tem == -1.0) {
+      tem = median
+
+    } else {
+
+      tem = va
+    }
+    tem
+
+  }
+
+  // Full All Features String:
+
+  def All_Features(row: Row): String = {
+
+    var temp = ""
+    //all characters
+    val character_Str_String = Character_Features(row)
+    temp = character_Str_String
+
+    //all Words
+    val Words_Str_String = Words_Features(row)
+    temp = temp + "," + Words_Str_String
+
+    // all sentences
+    val Sentences_Str_String = Sentences_Features(row)
+    temp = temp + "," + Sentences_Str_String
+
+    // all statements
+    val Statement_Str_String = Statement_Features(row)
+    temp = temp + "," + Statement_Str_String
+
+    //User Features -  there are 3 Joins in last stage when we have Data Frame
+    val User_Str_String = User_Features_Normal(row)
+    temp = temp + "," + User_Str_String
+
+    //Item Features -  there are 3 Joins in last stage when we have Data Frame
+    val Item_Str_String = Item_Features(row)
+    temp = temp + "," + Item_Str_String
+
+    //Revision Features
+    val Revision_Str_String = Revision_Features(row)
+    temp = temp + "," + Revision_Str_String
+
+    temp.trim()
+
+  }
+
+  // Function for character features
+  def Character_Features(row: Row): String = {
+
+    var str_results = ""
+    //1. Row from  partitioned Pair RDD:
+    var new_Back_Row = Row()
+    //2. Revision ID current operation:
+    var RevisionID = row(0)
+    //3. row(2) =  represent the Comment:
+    var CommentRecord_AsString = row(2).toString()
+    //4. extract comment tail from the Normal comment-Depending on the paperes, we apply character feature extraction on comment Tail
+    val CommentObj = new CommentProcessor()
+    val Temp_commentTail = CommentObj.Extract_CommentTail(CommentRecord_AsString)
+
+    if (Temp_commentTail != "" && Temp_commentTail != "NA") { // That means the comment is normal comment:
+      val CharactersOBJ = new CharactersFeatures()
+      var vectorElements = CharactersOBJ.Vector_Characters_Feature(Temp_commentTail)
+
+      val FacilityOBJ = new FacilitiesClass()
+      var Str_vector_Values = FacilityOBJ.ArrayToString(vectorElements)
+      str_results = Str_vector_Values
+      //CharacterFeatures = Vector_AsArrayElements
+      //new_Back_Row = Row(vectorElements)
+
+    } else {
+
+      var RatioValues = new Array[Double](25)
+      RatioValues(0) = 0
+      RatioValues(1) = 0
+      RatioValues(2) = 0
+      RatioValues(3) = 0
+      RatioValues(4) = 0
+      RatioValues(5) = 0
+      RatioValues(6) = 0
+      RatioValues(7) = 0
+      RatioValues(8) = 0
+      RatioValues(9) = 0
+      RatioValues(10) = 0
+      RatioValues(11) = 0
+      RatioValues(12) = 0
+      RatioValues(13) = 0
+      RatioValues(14) = 0
+      RatioValues(15) = 0
+      RatioValues(16) = 0
+      RatioValues(17) = 0
+      RatioValues(18) = 0
+      RatioValues(19) = 0
+      RatioValues(20) = 0
+      RatioValues(21) = 0
+      RatioValues(22) = 0
+      RatioValues(23) = 0
+      RatioValues(24) = 0
+
+      val FacilityOBJ = new FacilitiesClass()
+      var Str_vector_Values = FacilityOBJ.ArrayToString(RatioValues)
+      str_results = Str_vector_Values
+      //new_Back_Row = Row(vector_Values)
+
+    }
+    // CharacterFeatures
+    //new_Back_Row
+    str_results.trim()
+  }
+
+  // Function for Word features
+  def Words_Features(row: Row): String = {
+
+    var str_results = ""
+    //Row from  partitioned Pair RDD:
+    var new_Back_Row = Row()
+    //Revision ID current operation:
+    var RevisionID = row(0)
+    //row(2) =  represent the Comment:
+    var CommentRecord_AsString = row(2).toString()
+    //Extract comment tail from the Normal comment-Depending on the paperes, we apply character feature extraction on comment Tail
+    val CommentObj = new CommentProcessor()
+    val Temp_commentTail = CommentObj.Extract_CommentTail(CommentRecord_AsString)
+    var tempQids = 0.0
+    var temLinks = 0.0
+    var temlangs = 0.0
+
+    if (row(19) != null && row(25) != null) {
+
+      val WordsOBJ_countOf = new WordsFeatures()
+
+      var current_Body_Revision = row(2).toString() + row(8).toString()
+      var Prev_Body_Revision = row(19).toString() + row(25).toString()
+
+      // Feature PortionOfQids
+      var count_Qids_Prev = WordsOBJ_countOf.GetNumberofQid(Prev_Body_Revision)
+      var count_Qids_Current = WordsOBJ_countOf.GetNumberofQid(current_Body_Revision)
+      var porortion_Qids = WordsOBJ_countOf.proportion(count_Qids_Prev, count_Qids_Current)
+      tempQids = porortion_Qids
+
+      // Feature PortionOfLanguageAdded
+      var count_Lang_Prev = WordsOBJ_countOf.GetNumberofLanguageword(Prev_Body_Revision)
+      var count_lang_Current = WordsOBJ_countOf.GetNumberofLanguageword(current_Body_Revision)
+      var porportion_Lang = WordsOBJ_countOf.proportion(count_Lang_Prev, count_lang_Current)
+      temlangs = porportion_Lang
+
+      // Feature PortionOfLinksAddes
+      var count_links_Prev = WordsOBJ_countOf.GetNumberofLinks(Prev_Body_Revision)
+      var count_links_Current = WordsOBJ_countOf.GetNumberofLinks(current_Body_Revision)
+      var porportion_links = WordsOBJ_countOf.proportion(count_links_Prev, count_links_Current)
+      temLinks = porportion_links
+    } else {
+
+      var porortion_Qids = tempQids //=0.0
+      var porportion_Lang = temlangs //=0.0
+      var porportion_links = temLinks //=0.0
+
+    }
+
+    if (Temp_commentTail != "" && Temp_commentTail != "NA") { // That means the comment is normal comment:
+      val WordsOBJ = new WordsFeatures()
+
+      // 10- Features have Double type
+      var ArrayElements = WordsOBJ.Vector_Words_Feature(Temp_commentTail)
+      //   new_Back_Row = Row(vectorElements_Doubles)
+
+      var prevComment = row(19)
+      if (prevComment != null) {
+        var Prev_commentTail = CommentObj.Extract_CommentTail(prevComment.toString())
+        if (Prev_commentTail != "") {
+
+          //11.Feature Current_Previous_CommentTial_NumberSharingWords:
+
+          val NumberSharingWords = WordsOBJ.Current_Previous_CommentTial_NumberSharingWords(Temp_commentTail, Prev_commentTail)
+          ArrayElements(12) = NumberSharingWords.toDouble
+          //12.Feature Current_Previous_CommentTial_NumberSharingWords without Stopword:
+          val NumberSharingWordsWithoutStopwords = WordsOBJ.Current_Previous_CommentTial_NumberSharingWords_WithoutStopWords(Temp_commentTail, Prev_commentTail)
+          ArrayElements(13) = NumberSharingWordsWithoutStopwords.toDouble
+
+        }
+
+      }
+
+      ArrayElements(14) = tempQids
+      ArrayElements(15) = temlangs
+      ArrayElements(16) = temLinks
+
+      //      val FacilityOBJ = new FacilitiesClass()
+      //      var vector_Values = FacilityOBJ.ToVector(ArrayElements)
+      //      new_Back_Row = Row(vector_Values)
+
+      val FacilityOBJ = new FacilitiesClass()
+      var Str_vector_Values = FacilityOBJ.ArrayToString(ArrayElements)
+      str_results = Str_vector_Values
+
+    } else {
+
+      var RatioValues = new Array[Double](17)
+      RatioValues(0) = 0
+      RatioValues(1) = 0
+      RatioValues(2) = 0
+      RatioValues(3) = 0
+      RatioValues(4) = 0
+      RatioValues(5) = 0
+      RatioValues(6) = 0
+      RatioValues(7) = 0
+      RatioValues(8) = 0
+      RatioValues(9) = 0
+      RatioValues(10) = 0
+      RatioValues(11) = 0
+      RatioValues(12) = 0
+      RatioValues(13) = 0
+      RatioValues(14) = tempQids
+      RatioValues(15) = temlangs
+      RatioValues(16) = temLinks
+
+      //      val FacilityOBJ = new FacilitiesClass()
+      //      val vector_Values = FacilityOBJ.ToVector(RatioValues)
+      //      new_Back_Row = Row(vector_Values)
+
+      val FacilityOBJ = new FacilitiesClass()
+      var Str_vector_Values = FacilityOBJ.ArrayToString(RatioValues)
+      str_results = Str_vector_Values
+
+    }
+    //new_Back_Row
+    //Word_Features
+    str_results
+  }
+
+  // Function for Sentences features
+  def Sentences_Features(row: Row): String = {
+
+    var str_results = ""
+    //This will be used to save values in vector
+    var DoubleValues = new Array[Double](4)
+
+    //1. Row from  partitioned Pair RDD:
+    var new_Back_Row = Row()
+    //2. Revision ID current operation:
+    var RevisionID = row(0)
+    //3. row(2) =  represent the Full Comment:
+    var CommentRecord_AsString = row(2).toString()
+    //4. extract comment tail from the Normal comment-Depending on the paperes, we apply character feature extraction on comment Tail
+    val CommentObj = new CommentProcessor()
+    val Temp_commentTail = CommentObj.Extract_CommentTail(CommentRecord_AsString)
+
+    if (Temp_commentTail != "" && Temp_commentTail != "NA") {
+
+      // This is CommentTail Feature:-----------------------------------------------------
+      val comment_Tail_Length = Temp_commentTail.length()
+
+      // Feature 1 comment tail length
+      DoubleValues(0) = comment_Tail_Length
+
+      // Feature 2 similarity  between comment contain Sitelink and label :
+      //Check the language in comment that contain sitelinkword: --------------------
+      val Sitelink_inCommentObj = new SentencesFeatures()
+
+      if (CommentRecord_AsString.contains("sitelink")) { // start 1 loop
+        //1. First step : get the language from comment
+        val languagesitelink_from_Comment = Sitelink_inCommentObj.extract_CommentSiteLink_LanguageType(CommentRecord_AsString).trim()
+
+        //2. second step: get  the Label tage from json table :
+        if (row(9).toString() != "[]") { // start 2 loop
+          // if (row(8).toString() != "") {
+          val jsonStr = "\"\"\"" + row(9).toString() + "\"\"\"" // row(9) is the label record
+          val jsonObj: JSONObject = new JSONObject(row(9).toString()) // we have here the record which represents Label
+          var text_lang = languagesitelink_from_Comment.replace("wiki", "").trim()
+          var key_lang = "\"" + text_lang + "\""
+          if (jsonStr.contains(""""language"""" + ":" + key_lang)) {
+            val value_from_Label: String = jsonObj.getJSONObject(text_lang).getString("value")
+            val result = StringUtils.getJaroWinklerDistance(Temp_commentTail, value_from_Label)
+            DoubleValues(1) = RoundDouble(result)
+          } else {
+            DoubleValues(1) = 0.0
+          }
+
+        } // endd 2 loop 
+        else {
+
+          DoubleValues(1) = 0.0
+
+        }
+      } // end 1 loop
+      else {
+
+        DoubleValues(1) = 0.0
+
+      }
+
+      // Feature 3 similarity between comment contain label word and sitelink
+      //Check the language in comment that contain Label word:-----------------------
+      val Label_inCommentObj = new SentencesFeatures()
+      if (CommentRecord_AsString.contains("label")) {
+        //1. First step : get the language from comment
+        val languageLabel_from_Comment = Label_inCommentObj.extract_CommentLabel_LanguageType(CommentRecord_AsString).trim()
+        //2. second step: get  the site link  tage from json table :
+        if (row(13).toString() != "[]") { // start 2 loop
+          val jsonStr = "\"\"\"" + row(13).toString() + "\"\"\"" // row(13) is the sitelink record
+          val jsonObj: JSONObject = new JSONObject(row(13).toString())
+          var text_lang = languageLabel_from_Comment + "wiki"
+          var key_lang = "\"" + text_lang + "\""
+          if (jsonStr.contains(""""site"""" + ":" + key_lang)) {
+            val value_from_sitelink: String = jsonObj.getJSONObject(text_lang).getString("title")
+            val result = StringUtils.getJaroWinklerDistance(Temp_commentTail, value_from_sitelink)
+            DoubleValues(2) = RoundDouble(result)
+
+          } else {
+            DoubleValues(2) = 0.0
+
+          }
+
+        } else {
+          DoubleValues(2) = 0.0
+
+        }
+
+      } else {
+        DoubleValues(2) = 0.0
+
+      }
+
+      val prevComment = row(19)
+      if (prevComment != null) {
+        var Prev_commentTail = CommentObj.Extract_CommentTail(prevComment.toString())
+        val Similarityresult = StringUtils.getJaroWinklerDistance(Temp_commentTail, Prev_commentTail)
+        DoubleValues(3) = RoundDouble(Similarityresult)
+      } else {
+        DoubleValues(3) = 0.0
+
+      }
+
+      //      val FacilityOBJ = new FacilitiesClass()
+      //      val vector_Values = FacilityOBJ.ToVector(DoubleValues)
+      //      new_Back_Row = Row(vector_Values)
+
+      val FacilityOBJ = new FacilitiesClass()
+      var Str_vector_Values = FacilityOBJ.ArrayToString(DoubleValues)
+      str_results = Str_vector_Values
+
+    } else {
+
+      DoubleValues(0) = 0.0
+      DoubleValues(1) = 0.0
+      DoubleValues(2) = 0.0
+      DoubleValues(3) = 0.0
+
+      //      val FacilityOBJ = new FacilitiesClass()
+      //      val vector_Values = FacilityOBJ.ToVector(DoubleValues)
+      //      new_Back_Row = Row(vector_Values)
+
+      val FacilityOBJ = new FacilitiesClass()
+      var Str_vector_Values = FacilityOBJ.ArrayToString(DoubleValues)
+      str_results = Str_vector_Values
+
+    }
+
+    //new_Back_Row
+    str_results
+
+  }
+
+  // statement Features :
+  def Statement_Features(row: Row): String = {
+    var full_Str_Result = ""
+    //1. row(2) =  represent the Comment:
+    var fullcomment = row(2).toString()
+    val StatementOBJ = new StatementFeatures()
+
+    val property = StatementOBJ.getProperty(fullcomment)
+    val DataValue = StatementOBJ.getDataValue(fullcomment)
+    val Itemvalue = StatementOBJ.getItemValue(fullcomment)
+
+    // Feature 1 - Property
+    if (property != null) {
+      full_Str_Result = property.trim()
+    } else {
+      full_Str_Result = "NA"
+
+    }
+    // Feature 2 - DataValue
+    if (DataValue != null) {
+
+      full_Str_Result = full_Str_Result.trim() + "," + DataValue.trim()
+
+    } else {
+      full_Str_Result = full_Str_Result + "," + "NA"
+
+    }
+    // Feature 3 - Itemvalue
+    if (Itemvalue != null) {
+
+      full_Str_Result = full_Str_Result.trim() + "," + Itemvalue.trim()
+
+    } else {
+      full_Str_Result = full_Str_Result + "," + "NA"
+    }
+
+    full_Str_Result.trim()
+  }
+  // User Normal Features :
+  def User_Features_Normal(row: Row): String = {
+
+    var str_results = ""
+    var DoubleValues = new Array[Double](10) // you should change the index when add more element feature
+
+    //Row from  partitioned Pair RDD:
+    var new_Back_Row = Row()
+    //row(7) =  represent the Contributor name:
+    var full_comment = row(2).toString()
+    var contributor_Name = row(7).toString()
+    var contributor_ID = row(6).toString()
+    var contributor_IP = row(5).toString()
+    if (contributor_Name != "NA") {
+
+      val useFeatureOBJ = new UserFeatures()
+
+      //1. Is privileged :  There are 5 cases : if one of these cases is true that mean it is privileged else it is not privileged user
+      var flag_case1 = useFeatureOBJ.CheckName_isGlobalSysopUser(contributor_Name)
+      var flag_case2 = useFeatureOBJ.CheckName_isGlobalRollBackerUser(contributor_Name)
+      var flag_case3 = useFeatureOBJ.CheckName_isGlobalStewarUser(contributor_Name)
+      var flag_case4 = useFeatureOBJ.CheckName_isAdmin(contributor_Name)
+      var flag_case5 = useFeatureOBJ.CheckName_isRollBackerUser(contributor_Name)
+
+      if (flag_case1 == true || flag_case2 == true || flag_case3 == true || flag_case4 == true || flag_case5 == true) {
+
+        DoubleValues(0) = 1.0
+
+      } else {
+
+        DoubleValues(0) = 0.0
+      }
+
+      //2. is BotUser : There are 3 cases  :
+      var flag_case1_1 = useFeatureOBJ.CheckName_isLocalBotUser(contributor_Name)
+      var flag_case2_2 = useFeatureOBJ.CheckName_isGlobalbotUser(contributor_Name)
+      var flag_case3_3 = useFeatureOBJ.CheckName_isExtensionBotUser(contributor_Name)
+
+      if (flag_case1_1 == true || flag_case2_2 == true || flag_case3_3 == true) {
+
+        DoubleValues(1) = 1.0
+
+      } else {
+
+        DoubleValues(1) = 0.0
+      }
+
+      //3. is Bot User without BotflagUser : There is 1 case  :
+      var flag_BUWBF = useFeatureOBJ.CheckName_isBotUserWithoutBotFlagUser(contributor_Name)
+
+      if (flag_BUWBF == true) {
+        DoubleValues(2) = 1.0
+
+      } else {
+        DoubleValues(2) = 0.0
+
+      }
+
+      //4. is Property  creator :
+      var flagCreator = useFeatureOBJ.CheckName_isPropertyCreator(contributor_Name)
+
+      if (flagCreator == true) {
+        DoubleValues(3) = 1.0
+
+      } else {
+        DoubleValues(3) = 0.0
+
+      }
+
+      //5. is translator :
+      var flagTranslator = useFeatureOBJ.CheckName_isTranslator(contributor_Name)
+      if (flagTranslator == true) {
+        DoubleValues(4) = 1.0
+      } else {
+        DoubleValues(4) = 0.0
+      }
+
+      //6. is register user:
+      var flagRegistered = useFeatureOBJ.IsRegisteroUser(contributor_Name)
+      if (flagRegistered == true) {
+        DoubleValues(5) = 1.0
+      } else {
+        DoubleValues(5) = 0.0
+      }
+
+    } else {
+
+      DoubleValues(0) = 0.0
+      DoubleValues(1) = 0.0
+      DoubleValues(2) = 0.0
+      DoubleValues(3) = 0.0
+      DoubleValues(4) = 0.0
+      DoubleValues(5) = 0.0
+
+    }
+
+    //7. IP as a long value
+    if (contributor_IP != "0") {
+      DoubleValues(6) = contributor_IP.toDouble
+    } else {
+      DoubleValues(6) = 0.0
+    }
+    //8. ID
+
+    if (contributor_ID != "0") {
+      DoubleValues(7) = contributor_ID.toDouble
+    } else {
+      DoubleValues(7) = 0.0
+    }
+
+    //9- 10  BitrthDate  - DeatDate:
+
+    var DateObj = new UserFeatures()
+    var BirthDate = DateObj.IsBirthDate(full_comment)
+    var DeathDate = DateObj.IsDeathDate(full_comment)
+
+    if (BirthDate == true) {
+      DoubleValues(8) = 1.0
+
+    } else {
+      DoubleValues(8) = 0.0
+    }
+    if (DeathDate == true) {
+      DoubleValues(9) = 1.0
+    } else {
+      DoubleValues(9) = 0.0
+
+    }
+
+    //    val FacilityOBJ = new FacilitiesClass()
+    //    val vector_Values = FacilityOBJ.ToVector(DoubleValues)
+    //    new_Back_Row = Row(vector_Values)
+    //    new_Back_Row
+
+    val FacilityOBJ = new FacilitiesClass()
+    var Str_vector_Values = FacilityOBJ.ArrayToString(DoubleValues)
+    str_results = Str_vector_Values
+
+    str_results.trim()
+
+  }
+
+  def Item_Features(row: Row): String = {
+
+    var str_results = ""
+    var DoubleValues = new Array[Double](11)
+    //Row from  partitioned Pair RDD:
+    var new_Back_Row = Row()
+    var ItemOBJ = new ItemFeatures()
+
+    //1. Feature depending on Label:
+    var NumberOfLabel = 0.0
+    var Label_String = row(9).toString()
+    if (Label_String != "[]") {
+      NumberOfLabel = ItemOBJ.Get_NumberOfLabels(Label_String)
+      DoubleValues(0) = NumberOfLabel
+    } else {
+      NumberOfLabel = 0.0
+      DoubleValues(0) = NumberOfLabel
+    }
+    //2. Feature depending on Description:
+    var Description_String = row(10).toString()
+    var NumberOfDescription = 0.0
+    if (Description_String != "[]") {
+      NumberOfDescription = ItemOBJ.Get_NumberOfDescription(Description_String)
+      DoubleValues(1) = NumberOfDescription
+
+    } else {
+      NumberOfDescription = 0.0
+      DoubleValues(1) = NumberOfDescription
+
+    }
+    //3. Feature depending on Aliases:
+    var Aliases_String = row(11).toString()
+    var NumberOfAliases = 0.0
+    if (Aliases_String != "[]") {
+      NumberOfAliases = ItemOBJ.Get_NumberOfAliases(Aliases_String)
+      DoubleValues(2) = NumberOfAliases
+
+    } else {
+      NumberOfAliases = 0.0
+      DoubleValues(2) = NumberOfAliases
+
+    }
+    //4. Feature depending on Claims :
+    var Claims_String = row(12).toString()
+    var NumberOfClaims = 0.0
+    if (Claims_String != "[]") {
+      NumberOfClaims = ItemOBJ.Get_NumberOfClaim(Claims_String)
+      DoubleValues(3) = NumberOfClaims
+
+    } else {
+      NumberOfClaims = 0.0
+      DoubleValues(3) = NumberOfClaims
+
+    }
+    //5. Feature depending on SiteLink
+    var SiteLink_String = row(13).toString()
+    var NumberOfSitelink = 0.0
+    if (SiteLink_String != "[]") {
+      NumberOfSitelink = ItemOBJ.Get_NumberOfSiteLinks(SiteLink_String)
+      DoubleValues(4) = NumberOfSitelink
+
+    } else {
+      NumberOfSitelink = 0.0
+      DoubleValues(4) = NumberOfSitelink
+
+    }
+
+    //6. Feature depending on Claims - statements :
+    var statement_String = row(12).toString() // from claim
+    var NumberOfstatement = 0.0
+    if (statement_String != "[]") {
+      NumberOfstatement = ItemOBJ.Get_NumberOfstatements(statement_String)
+      DoubleValues(5) = NumberOfstatement
+
+    } else {
+      NumberOfstatement = 0.0
+      DoubleValues(5) = NumberOfstatement
+
+    }
+
+    //7. Feature depending on Claims - References  :
+    var References_String = row(12).toString() // from claim
+    var NumberOfReferences = 0.0
+    if (References_String != "[]") {
+      NumberOfReferences = ItemOBJ.Get_NumberOfReferences(References_String)
+      DoubleValues(6) = NumberOfReferences
+
+    } else {
+      NumberOfReferences = 0.0
+      DoubleValues(6) = NumberOfReferences
+
+    }
+    //8. Feature depending on claim
+    var Qualifier_String = row(12).toString() // from claim
+    var NumberOfQualifier = 0.0
+    if (Qualifier_String != "[]") {
+      NumberOfQualifier = ItemOBJ.Get_NumberOfQualifier(Qualifier_String)
+      DoubleValues(7) = NumberOfQualifier
+
+    } else {
+      NumberOfQualifier = 0.0
+      DoubleValues(7) = NumberOfQualifier
+
+    }
+
+    //9. Features depending on  claim
+    var Qualifier_String_order = row(12).toString() // from claim
+    var NumberOfQualifier_order = 0.0
+    if (Qualifier_String_order != "[]") {
+      NumberOfQualifier_order = ItemOBJ.Get_NumberOfQualifier_Order(Qualifier_String_order)
+      DoubleValues(8) = NumberOfQualifier_order
+
+    } else {
+      NumberOfQualifier_order = 0.0
+      DoubleValues(8) = NumberOfQualifier_order
+
+    }
+
+    //10. Feature depending on  Site link
+    var BadgesString = row(13).toString() // from claim
+    var NumberOfBadges = 0.0
+    if (BadgesString != "[]") {
+      NumberOfBadges = ItemOBJ.Get_NumberOfBadges(BadgesString)
+      DoubleValues(9) = NumberOfBadges
+
+    } else {
+      NumberOfBadges = 0.0
+      DoubleValues(9) = NumberOfBadges
+
+    }
+
+    //11. Item Title (instead of Item  ID)
+    var Item_Id_Title = row(1).toString().replace("Q", "")
+    var Item = Item_Id_Title.trim().toDouble
+    DoubleValues(10) = Item
+
+    //    val FacilityOBJ = new FacilitiesClass()
+    //    val vector_Values = FacilityOBJ.ToVector(DoubleValues)
+    //    new_Back_Row = Row(vector_Values)
+    //    new_Back_Row
+    //
+
+    val FacilityOBJ = new FacilitiesClass()
+    var Str_vector_Values = FacilityOBJ.ArrayToString(DoubleValues)
+    str_results = Str_vector_Values
+
+    str_results.trim()
+
+  }
+
+  def Revision_Features(row: Row): String = {
+
+    //var DoubleValues = new Array[Double](6)
+    var full_Str_Result = ""
+    //1. Row from  partitioned Pair RDD:
+    var new_Back_Row = Row()
+    //2. Revision ID current operation:
+    var RevisionID = row(0)
+    //3. row(2) =  represent the Comment:
+    var fullcomment = row(2).toString()
+    // DoubleValues(0) = length
+
+    //1. Revision Language :---------------------------------------------------------------------------------
+
+    var comment_for_Language = row(2).toString()
+    val CommentLanguageOBJ = new RevisionFeatures()
+    val language = CommentLanguageOBJ.Extract_Revision_Language(fullcomment)
+    if (language != null && language != "NA") {
+      full_Str_Result = language.trim()
+    } else {
+      full_Str_Result = "NA".trim()
+
+    }
+    //2. Revision Language  local:----------------------------------------------------------------------------
+    if (language != "NA") {
+      if (language.contains("-")) { // E.g.Revision ID = 10850 sample1
+        var LocalLangArray: Array[String] = language.split("-", 2)
+        var location = LocalLangArray(1)
+        full_Str_Result = full_Str_Result + "," + location.trim()
+      } else {
+
+        full_Str_Result = full_Str_Result + "," + "NA"
+      }
+
+    } else {
+      full_Str_Result = full_Str_Result + "," + "NA"
+    }
+
+    //3. Is it Latin Language or Not:-------------------------------------------------------------------------
+    val revisionFeatureOBJ = new RevisionFeatures()
+    val flagLatin = revisionFeatureOBJ.Check_ContainLanguageLatin_NonLatin(language)
+
+    if (flagLatin == true) {
+
+      full_Str_Result = full_Str_Result + "," + "1.0"
+
+    } else {
+
+      full_Str_Result = full_Str_Result + "," + "0.0"
+    }
+
+    //4. Json Length : be care full to RDD where the json before parsed--------------------------------------
+    // var Jason_Text = row(8).toString()
+
+    //replacing_with_Quoto for cleaning the Json tag from extr tags such as <SHA>...
+    var Jason_Text = replacing_with_Quoto(row(0).toString(), row(8).toString())
+    var Json_Length = Jason_Text.length()
+
+    full_Str_Result = full_Str_Result + "," + Json_Length.toString()
+
+    //5. Revision Action -:-----------------------------------------------------------------------
+    val CommentProcessOBJ1 = new CommentProcessor()
+    val actions1 = CommentProcessOBJ1.Extract_Actions_FromComments(fullcomment)
+
+    var ActionsArray1: Array[String] = actions1.split("_", 2)
+    var action1 = ActionsArray1(0).toString()
+    //var SubAction = ActionsArray(1)
+    full_Str_Result = full_Str_Result + "," + action1.trim()
+    //full_Str_Result = full_Str_Result + "," + SubAction.trim()
+
+    //6.  Revision Prev-Action :-------------------------------------------------------------------------------
+    if (row(19) != null) {
+      var Prev_fullcomment1 = row(19).toString()
+      val Prev_CommentProcessOBJ1 = new CommentProcessor()
+      val Prev_actions1 = Prev_CommentProcessOBJ1.Extract_Actions_FromComments(fullcomment)
+      var Prev_ActionsArray1: Array[String] = Prev_actions1.split("_", 2)
+      var Prev_action1 = ActionsArray1(0).trim()
+      //      var Prev_SubAction = ActionsArray(1).trim()
+      full_Str_Result = full_Str_Result + "," + Prev_action1.trim()
+      //full_Str_Result = full_Str_Result + "," + Prev_SubAction.trim()
+
+      // println(row(16).toString())
+    } else {
+
+      full_Str_Result = full_Str_Result + "," + "NA"
+      // full_Str_Result = full_Str_Result + "," + "NA"
+    }
+
+    // 7. Revision Account user type change :----------------------------------------------------------------------------
+    var changeFlag = false
+    if (row(23) != null) {
+      var Prev_Contributor_ID = row(23).toString()
+      var Current_Contributor_ID = row(6).toString()
+
+      if (Prev_Contributor_ID != Current_Contributor_ID) {
+
+        changeFlag = true
+        full_Str_Result = full_Str_Result + "," + "1.0"
+
+      } else {
+        full_Str_Result = full_Str_Result + "," + "0.0"
+      }
+
+    } else {
+      full_Str_Result = full_Str_Result + "," + "0.0"
+
+    }
+
+    // 8.Revision Parent :-----------------------------------------------------------------------------------------------------
+    var RevisionParent = row(3).toString()
+    full_Str_Result = full_Str_Result + "," + RevisionParent.toString().trim()
+
+    //9. Revision Time Stamp------------------------------------------------------------------------------------------------
+    var RevisionTimeZone = row(4).toString()
+    full_Str_Result = full_Str_Result + "," + RevisionTimeZone
+
+    //10. Revision Size:------------------------------------------------------------------------------------------------
+
+    var RevisionBody = row(0).toString() + row(2).toString() + row(3).toString() + row(4).toString() + row(8).toString() + row(14).toString() + row(15).toString() + row(16).toString()
+    if (row(5).toString() != "0") {
+
+      RevisionBody = RevisionBody + row(5).toString()
+      full_Str_Result = full_Str_Result + "," + RevisionBody.length().toString()
+
+    } else {
+      RevisionBody = RevisionBody + row(6).toString() + row(7).toString()
+      full_Str_Result = full_Str_Result + "," + RevisionBody.length().toString()
+
+    }
+
+    //11. ContentType: take Action1 as input : --------------------------------------------------------------
+
+    val CommentProcessOBJ_New = new CommentProcessor()
+    val actions_New = CommentProcessOBJ_New.Extract_Actions_FromComments(fullcomment)
+
+    var ActionsArrayNew: Array[String] = actions_New.split("_", 2)
+    var actionNew = ActionsArrayNew(0)
+    var CTOBJ = new RevisionFeatures()
+    var contentType = CTOBJ.getContentType(actionNew.trim())
+    full_Str_Result = full_Str_Result + "," + contentType.trim()
+
+    // 12. Bytes Increase (  subtract Bytes current revision with previous revision ):--------------------------------------------------------------
+
+    var CurrentRevision = ""
+    var PreviRevision = ""
+
+    // For Current Revision
+    CurrentRevision = row(0).toString() + row(2).toString() + row(3).toString() + row(4).toString() + row(8).toString() + row(14).toString() + row(15).toString() + row(16).toString()
+    if (row(5).toString() != "0") {
+      CurrentRevision = CurrentRevision.trim() + row(5).toString()
+    } else {
+      CurrentRevision = CurrentRevision.trim() + row(6).toString() + row(7).toString()
+    }
+
+    // For Previous Revision :
+    if (row(17) != null && row(19) != null && row(20) != null && row(21) != null && row(25) != null && row(31) != null && row(32) != null && row(33) != null) {
+      if (row(22) != null && row(22).toString() != "0") {
+        var PreviRevision = row(17).toString() + row(19).toString() + row(20).toString() + row(21).toString() + row(25).toString() + row(31).toString() + row(32).toString() + row(33).toString() + row(22).toString()
+
+      } else if (row(23) != null && row(24) != null) {
+        var PreviRevision = row(17).toString() + row(19).toString() + row(20).toString() + row(21).toString() + row(25).toString() + row(31).toString() + row(32).toString() + row(33).toString() + row(23).toString() + row(24).toString()
+      } else {
+
+        PreviRevision = null
+      }
+
+    }
+
+    if (PreviRevision != null) {
+
+      var Bytes1 = CurrentRevision.length()
+      var Bytes2 = PreviRevision.length()
+      var BytesResults = Bytes1 - Bytes2
+
+      full_Str_Result = full_Str_Result + "," + BytesResults.toString()
+
+    } else {
+
+      full_Str_Result = full_Str_Result + "," + "0"
+
+    }
+
+    //13. Time since last Revision: ----------------------------------------------------------------------
+
+    if (row(21) != null) {
+
+      var CurrentTime = DateToLong(row(4).toString())
+
+      var PreviousTime = DateToLong(row(21).toString())
+
+      var FinalTime = CurrentTime - PreviousTime
+
+      full_Str_Result = full_Str_Result + "," + FinalTime.toString()
+
+    } else {
+
+      full_Str_Result = full_Str_Result + "," + "0"
+
+    }
+
+    //14. Comment Length:---------------------------------------
+    var lengthcomment = fullcomment.length().toString()
+    full_Str_Result = full_Str_Result + "," + lengthcomment
+
+    //15. Revision SubAction:
+    val CommentProcessOBJ2 = new CommentProcessor()
+    val actions2 = CommentProcessOBJ2.Extract_Actions_FromComments(fullcomment)
+
+    var ActionsArray2: Array[String] = actions2.split("_", 2)
+    var SubAction2 = ActionsArray2(1)
+    full_Str_Result = full_Str_Result + "," + SubAction2.trim()
+
+    //16.Prev_revision SubAction:
+    if (row(19) != null) {
+      var Prev_fullcomment2 = row(19).toString()
+      val Prev_CommentProcessOBJ2 = new CommentProcessor()
+      val Prev_actions2 = Prev_CommentProcessOBJ2.Extract_Actions_FromComments(fullcomment)
+      var Prev_ActionsArray2: Array[String] = Prev_actions2.split("_", 2)
+      var Prev_SubAction2 = ActionsArray2(1).trim()
+      full_Str_Result = full_Str_Result + "," + Prev_SubAction2.trim()
+
+    } else {
+
+      full_Str_Result = full_Str_Result + "," + "NA"
+    }
+
+    //    //15. Item of Revision :----------------------------------------
+    //
+    //    var ItemOfRevision = row(1).toString()
+    //    full_Str_Result = full_Str_Result + "," + ItemOfRevision
+
+    full_Str_Result
+
+  }
+
+  //========================
+
+  def RoundDouble(va: Double): Double = {
+
+    val rounded: Double = Math.round(va * 10000).toDouble / 1000
+    rounded
+
+  }
+  def DateToLong(strDate: String): Long = {
+
+    var str = strDate.replace("T", " ")
+    str = str.replace("Z", "").trim()
+    val ts1: java.sql.Timestamp = java.sql.Timestamp.valueOf(str)
+    val tsTime1: Long = ts1.getTime()
+
+    tsTime1
+  }
+
+  def replacing_with_Quoto(keyValue: String, str: String): String = {
+    var Full_Key = "\"" + "key" + "\"" + ":" + "\"" + keyValue + "\"" + ","
+    var container = str
+    // val x= '"'+'"'+'"'+str+'"'+'"'+'"'
+    val before = "</format>" + "<text xml:space=" + """"preserve"""" + ">"
+    val after1 = "</text><sha1>"
+    val after2 = "<sha1>"
+    var quot = "\"\"\""
+    var tem = ""
+    val flag1 = container.contains(before)
+
+    if (flag1 == true) {
+      //    var dd= container.replace(before, quot)
+      var dd = container.replace(before, "")
+
+      tem = dd
+
+    }
+    //
+    val flag2 = tem.contains(after1)
+
+    if (flag2 == true) {
+      //    var dd= tem.replace(after1, quot)
+      var dd = tem.replace(after1, "")
+
+      tem = dd
+
+    }
+
+    val flag3 = tem.contains(after2)
+    if (flag3 == true) {
+      //    var dd= tem.replace(after2, quot)
+      var dd = tem.replace(after2, "")
+
+      tem = dd
+
+    }
+
+    var sb: StringBuffer = new StringBuffer(tem)
+    var result = sb.insert(1, Full_Key).toString()
+
     result
-  }
-  // make the revision as one string
-  def abendRevision(str: String): String = {
-    val st = str.replaceAll("\\s", "")
-    st
 
   }
 
-  // def clean string from {, } , ""
-
-  def cleaner(str: String): String = {
-
-    val cleaned_value1 = str.replace("{", "").trim()
-    val cleaned_value2 = str.replace("}", "").trim()
-    val cleaned_value3 = cleaned_value2.replace("\"", "");
-
-    cleaned_value3
-  }
-
-}
+}// endl class -------

@@ -15,7 +15,11 @@ The ML layer currently supports the following algorithms:
   * DistMult (beta status)
 * Terminological Decision Trees for the classification of concepts(beta status)
 * Anomaly detection (beta status)
+* RDF graph kernel based on [A Fast and Simple Graph Kernel for RDF](http://ceur-ws.org/Vol-1082/paper2.pdf)
 
 Please see https://github.com/SANSA-Stack/SANSA-Examples/tree/master/sansa-examples-spark/src/main/scala/net/sansa_stack/examples/spark/ml for examples on how to use the above machine learning approaches.
 
 Several further algorithms are in development. Please create a pull request and/or contact [Jens Lehmann](http://jens-lehmann.org) if you are interested in contributing algorithms to SANSA-ML.
+
+## How to Contribute
+We always welcome new contributors to the project! Please see [our contribution guide](http://sansa-stack.net/contributing-to-sansa/) for more details on how to get started contributing to SANSA.
