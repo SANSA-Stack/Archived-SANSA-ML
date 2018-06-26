@@ -256,7 +256,7 @@
 					</configuration>
 				</plugin>
 
-				<!-- Scalastyle -->
+		<!-- Scalastyle -->
 				<plugin>
 					<groupId>org.scalastyle</groupId>
 					<artifactId>scalastyle-maven-plugin</artifactId>
@@ -392,6 +392,18 @@
 				</plugins>
 			</build>
 		</profile>
+		<!-- profile necessary for Scalastyle plugin to find the conf file -->
+		<profile>
+			<id>root-dir</id>
+			<activation>
+				<file>
+					<exists>${project.basedir}/../../scalastyle-config.xml</exists>
+				</file>
+			</activation>
+			<properties>
+				<scalastyle.config.path>${project.basedir}/../scalastyle-config.xml</scalastyle.config.path>
+			</properties>
+		</profile>
 	</profiles>
 
 	<distributionManagement>
@@ -406,20 +418,6 @@
 			<url>http://maven.aksw.org/archiva/repository/snapshots</url>
 		</snapshotRepository>
 	</distributionManagement>
-
-		<!-- profile necessary for Scalastyle plugin to find the conf file -->
-		<profile>
-			<id>root-dir</id>
-			<activation>
-				<file>
-					<exists>${project.basedir}/../../scalastyle-config.xml</exists>
-				</file>
-			</activation>
-			<properties>
-				<scalastyle.config.path>${project.basedir}/../scalastyle-config.xml</scalastyle.config.path>
-			</properties>
-		</profile>
-	</profiles>
 
 	<repositories>
 		<repository>
