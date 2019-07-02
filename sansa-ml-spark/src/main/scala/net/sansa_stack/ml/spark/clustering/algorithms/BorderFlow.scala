@@ -1,3 +1,5 @@
+package net.sansa_stack.ml.spark.clustering.algorithms
+
 import java.io._
 import java.io.{ ByteArrayInputStream, FileNotFoundException, FileReader, IOException, StringWriter }
 import java.lang.{ Long => JLong }
@@ -8,7 +10,7 @@ import scala.util.control.Breaks._
 
 import breeze.linalg.{ squaredDistance, DenseVector, Vector }
 import org.apache.jena.datatypes.{ RDFDatatype, TypeMapper }
-import org.apache.jena.graph.{ Node => JenaNode, Node_ANY, Node_Blank, Node_Literal, Node_URI, Triple => JenaTriple, _ }
+import org.apache.jena.graph.{ Node, Node_ANY, Node_Blank, Node_Literal, Node_URI, Triple, _ }
 import org.apache.jena.riot.{ Lang, RDFDataMgr }
 import org.apache.jena.riot.writer.NTriplesWriter
 import org.apache.jena.util._
@@ -24,9 +26,11 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SparkSession
 import scopt.OptionParser
 
-object BorderFlow {
+class BorderFlow(graph: Graph[Node, Node]) extends ClusterAlgo{
 
-  def apply(spark: SparkSession, graph: Graph[String, String], output: String, outputevlsoft: String, outputevlhard: String): Unit = {
+  def run(): RDD[(Long, List[String])] = {
+  val spark = SparkSession.builder.getOrCreate()
+  import spark.implicits._
 
     /**
      * undirected graph : orient =0
@@ -799,15 +803,9 @@ object BorderFlow {
       val evaluateString: List[String] = List(av.toString())
       val evaluateStringRDD = spark.sparkContext.parallelize(evaluateString)
 
-      evaluateStringRDD.saveAsTextFile(outputevlhard)
-
       val avsoft = evaluateSoft.sum / evaluateSoft.size
       val evaluateStringS: List[String] = List(avsoft.toString())
       val evaluateStringRDDS = spark.sparkContext.parallelize(evaluateStringS)
-
-      evaluateStringRDDS.saveAsTextFile(outputevlsoft)
-      // println(s"averagesoft: $avsoft\n")
-
       bigList
     }
 
@@ -820,7 +818,7 @@ object BorderFlow {
       val b: List[VertexId] = a
       for (i <- 0 until b.length) {
         graph.vertices.collect().map(v => {
-          if (b(i) == v._1) listuri = listuri.::(v._2)
+          if (b(i) == v._1) listuri = listuri.::(v._2.toString())
         })
 
       }
@@ -829,8 +827,11 @@ object BorderFlow {
 
     val rdf = clusterRdd.map(x => makerdf(x))
     val rdfRDD = spark.sparkContext.parallelize(rdf)
-
-    rdfRDD.saveAsTextFile(output)
+    val cluster = rdfRDD.zipWithIndex().map(f => (f._2, f._1))
+    cluster
   }
+}
+object BorderFlow {
+  def apply(input: Graph[Node, Node]): BorderFlow = new BorderFlow(input)
 }
 

@@ -3,16 +3,16 @@
 	<modelVersion>4.0.0</modelVersion>
 
 	<parent>
-		<artifactId>sansa-ml-parent_2.11</artifactId>
 		<groupId>net.sansa-stack</groupId>
-		<version>0.5.0</version>
+		<artifactId>sansa-ml-parent_2.11</artifactId>
+		<version>0.6.0</version>
 	</parent>
+
 	<artifactId>sansa-ml-spark_2.11</artifactId>
 	<name>ML API - Apache Spark</name>
 	<description>RDF/OWL Machine Learning Library for Apache Spark</description>
 
 	<properties>
-		<hadoop.version>2.8.3</hadoop.version>
 		<geospark.version>1.1.3</geospark.version>
 	</properties>
 
@@ -22,7 +22,7 @@
 		<dependency>
 			<groupId>net.sansa-stack</groupId>
 			<artifactId>sansa-ml-common_${scala.binary.version}</artifactId>
-			<version>${project.parent.version}</version>
+			<version>${project.version}</version>
 		</dependency>
 
 		<!-- SANSA RDF -->
@@ -78,32 +78,26 @@
 		<dependency>
 			<groupId>net.sourceforge.owlapi</groupId>
 			<artifactId>org.semanticweb.hermit</artifactId>
-			<version>1.3.8.510</version>
 		</dependency>
 
 		<!-- Hadoop dependencies (mainly used for InputFormat definitions) -->
 		<dependency>
 			<groupId>org.apache.hadoop</groupId>
 			<artifactId>hadoop-mapreduce-client-core</artifactId>
-			<version>${hadoop.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>org.apache.hadoop</groupId>
 			<artifactId>hadoop-common</artifactId>
-			<version>${hadoop.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>org.apache.hadoop</groupId>
 			<artifactId>hadoop-streaming</artifactId>
-			<version>${hadoop.version}</version>
 		</dependency>
 
 		<!-- Apache JENA 3.x -->
 		<dependency>
 			<groupId>org.apache.jena</groupId>
-			<artifactId>apache-jena-libs</artifactId>
-			<type>pom</type>
-			<version>${jena.version}</version>
+			<artifactId>jena-core</artifactId>
 		</dependency>
 
 		<!-- BigDL Library -->
@@ -117,8 +111,8 @@
 			<groupId>org.json</groupId>
 			<artifactId>json</artifactId>
 		</dependency>
-		
-		
+
+
 		<dependency>
 			<groupId>com.github.haifengl</groupId>
 			<artifactId>smile-core</artifactId>
@@ -134,14 +128,13 @@
 			<artifactId>json4s-native_${scala.binary.version}</artifactId>
 			<version>3.6.2</version>
 		</dependency>
-		
+
 
 		<!-- https://mvnrepository.com/artifact/org.datasyslab/geospark -->
 		<dependency>
 			<groupId>org.datasyslab</groupId>
 			<artifactId>geospark</artifactId>
 			<version>${geospark.version}</version>
-			<scope>provided</scope>
 		</dependency>
 
 
@@ -191,47 +184,23 @@
 		</dependency>
 	</dependencies>
 
+<!--
 	<build>
 		<sourceDirectory>src/main/scala</sourceDirectory>
 		<testSourceDirectory>src/test/scala</testSourceDirectory>
-		<!--<outputDirectory>target/scala-${scala.binary.version}/classes</outputDirectory> -->
-		<!--<testOutputDirectory>target/scala-${scala.binary.version}/test-classes</testOutputDirectory> -->
 		<plugins>
-			<plugin>
-				<groupId>net.alchim31.maven</groupId>
-				<artifactId>scala-maven-plugin</artifactId>
-			</plugin>
-			<plugin>
-				<artifactId>maven-compiler-plugin</artifactId>
-			</plugin>
-
 			<plugin>
 				<groupId>org.scalastyle</groupId>
 				<artifactId>scalastyle-maven-plugin</artifactId>
 			</plugin>
 
-			<!-- disable surefire -->
+
+			<!- - Scala Maven - ->
 			<plugin>
-				<groupId>org.apache.maven.plugins</groupId>
-				<artifactId>maven-surefire-plugin</artifactId>
-				<configuration>
-					<useFile>false</useFile>
-					<disableXmlReport>true</disableXmlReport>
-					<!--<forkCount>1</forkCount> -->
-					<!--<reuseForks>false</reuseForks> -->
-
-					<!-- If you have classpath issue like NoDefClassError,... -->
-					<!-- useManifestOnlyJar>false</useManifestOnlyJar -->
-					<threadCountSuites>4</threadCountSuites>
-					<includes>
-						<include>**/*Test.*</include>
-						<include>**/*Suite.*</include>
-					</includes>
-					<skipTests>true</skipTests>
-				</configuration>
+				<groupId>net.alchim31.maven</groupId>
+				<artifactId>scala-maven-plugin</artifactId>
 			</plugin>
-
-			<!-- enable scalatest -->
+			<!- - enable scalatest - ->
 			<plugin>
 				<groupId>org.scalatest</groupId>
 				<artifactId>scalatest-maven-plugin</artifactId>
@@ -249,42 +218,18 @@
 					</execution>
 				</executions>
 			</plugin>
-			<plugin>
-				<groupId>org.codehaus.mojo</groupId>
-				<artifactId>build-helper-maven-plugin</artifactId>
-				<version>1.8</version>
-				<executions>
-					<!-- Add src/main/scala to eclipse build path -->
-					<execution>
-						<id>add-source</id>
-						<phase>generate-sources</phase>
-						<goals>
-							<goal>add-source</goal>
-						</goals>
-						<configuration>
-							<sources>
-								<source>src/main/scala</source>
-							</sources>
-						</configuration>
-					</execution>
-					<!-- Add src/test/scala to eclipse build path -->
-					<execution>
-						<id>add-test-source</id>
-						<phase>generate-test-sources</phase>
-						<goals>
-							<goal>add-test-source</goal>
-						</goals>
-						<configuration>
-							<sources>
-								<source>src/test/scala</source>
-							</sources>
-						</configuration>
-					</execution>
-				</executions>
-			</plugin>
 		</plugins>
 	</build>
+-->
+
 	<repositories>
+		<repository>
+			<id>dbscan-on-spark-repo</id>
+			<name>Repo for DBSCAN on Spark</name>
+			<url>http://dl.bintray.com/irvingc/maven</url>
+		</repository>
+
+<!--
 		<repository>
 			<id>oss-sonatype</id>
 			<name>oss-sonatype</name>
@@ -301,13 +246,6 @@
 				<enabled>true</enabled>
 			</snapshots>
 		</repository>
-
-		<repository>
-			<id>dbscan-on-spark-repo</id>
-			<name>Repo for DBSCAN on Spark</name>
-			<url>http://dl.bintray.com/irvingc/maven</url>
-		</repository>
-
 		<repository>
 			<id>maven.aksw.internal</id>
 			<name>AKSW Release Repository</name>
@@ -330,6 +268,7 @@
 				<enabled>true</enabled>
 			</snapshots>
 		</repository>
+-->
 	</repositories>
 
 </project>

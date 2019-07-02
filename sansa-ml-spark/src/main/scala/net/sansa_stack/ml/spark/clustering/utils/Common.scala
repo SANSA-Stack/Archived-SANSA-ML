@@ -8,7 +8,8 @@ import org.apache.spark.rdd.RDD
 import org.json4s.DefaultFormats
 import org.json4s.jackson.Serialization
 
-import net.sansa_stack.ml.spark.clustering.datatypes.{Cluster, Clusters, Poi}
+import net.sansa_stack.ml.spark.clustering.datatypes.{Cluster, Clusters, POI}
+import net.sansa_stack.ml.spark.clustering.datatypes.DbPOI
 
 object Common {
   val prefixID = "http://example.org/id/poi/"
@@ -24,7 +25,7 @@ object Common {
     * @param pairs
     * @return an array of poi
     */
-  def join(sparkContext: SparkContext, ids: Array[Long], pairs: RDD[(Long, Poi)]): Array[Poi] = {
+  def join(sparkContext: SparkContext, ids: Array[Long], pairs: RDD[(Long, POI)]): Array[POI] = {
     val idsPair = sparkContext.parallelize(ids).map(x => (x, x))
     idsPair.join(pairs).map(x => x._2._2).collect()
   }
@@ -37,17 +38,18 @@ object Common {
     * @param pois pois object
     * @return
     */
-  def writeClusteringResult(sparkContext: SparkContext, clusters: Map[Int, Array[Long]], pois: RDD[Poi], fileWriter: PrintWriter): Unit = {
+  def writeClusteringResult(sparkContext: SparkContext, clusters: Map[Int, Array[Long]], pois: RDD[POI], fileWriter: PrintWriter): Unit = {
     val assignments = clusters.toList.sortBy { case (k, v) => v.length }
     val poisKeyPair = pois.keyBy(f => f.poi_id).persist()
-    val clustersPois = Clusters(assignments.size, assignments.map(_._2.length).toArray, assignments.map(f => Cluster(f._1, join(sparkContext, f._2, poisKeyPair))))
+    val assm = assignments.toArray
+    val clustersPois = Clusters(assignments.size, assignments.map(_._2.length).toArray, assm.map(f => Cluster(f._1, join(sparkContext, f._2, poisKeyPair))))
     implicit val formats = DefaultFormats
     Serialization.writePretty(clustersPois, fileWriter)
   }
    /**
     * serialize clustering results to .nt file
     */
-  def seralizeToNT(sparkContext: SparkContext, clusters: Map[Int, Array[Long]], pois: RDD[Poi]): Unit = {
+  def seralizeToNT(sparkContext: SparkContext, clusters: Map[Int, Array[Long]], pois: RDD[POI]): RDD[(Int, List[Triple])] = {
     val assignments = clusters.toList.sortBy { case (k, v) => v.length }
     val poisKeyPair = pois.keyBy(f => f.poi_id).persist()
     val newAssignment = assignments.map(f => (f._1, sparkContext.parallelize(f._2).map(x => (x, x)).join(poisKeyPair).map(x => ( x._2._2.poi_id, x._2._2.categories, x._2._2.coordinate)).collect()))
@@ -63,9 +65,8 @@ object Common {
                                           )}
                                             ).toList)
     )
-    newAssignmentRDDTriple.saveAsTextFile("results/triples")
+    newAssignmentRDDTriple
   }
-
 }
 
 
