@@ -1,0 +1,77 @@
+@prefix qb: <http://purl.org/linked-data/cube#> .
+@prefix eg: <http://example.org/ns#> .
+@prefix dbpedia: <http://dbpedia.org/ontology/> .
+@prefix cbo: <http://comicmeta.org/cbo/> .
+
+eg:obs1 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "01"  ;
+	 dbpedia:year   "2015"  ;
+	 cbo:price   "0"  ;
+.
+eg:obs2 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "02"  ;
+	 dbpedia:year   "2015"  ;
+	 cbo:price   "0.37"  ;
+.
+eg:obs3 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "03"  ;
+	 dbpedia:year   "2015"  ;
+	 cbo:price   "0.4"  ;
+.
+eg:obs4 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "04"  ;
+	 dbpedia:year   "2015"  ;
+	 cbo:price   "0.37"  ;
+.
+eg:obs5 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "05"  ;
+	 dbpedia:year   "2015"  ;
+	 cbo:price   "0.32"  ;
+.
+eg:obs6 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "06"  ;
+	 dbpedia:year   "2015"  ;
+	 cbo:price   "0.34"  ;
+.
+eg:obs7 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "07"  ;
+	 dbpedia:year   "2015"  ;
+	 cbo:price   "0.39"  ;
+.
+eg:obs8 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "08"  ;
+	 dbpedia:year   "2015"  ;
+	 cbo:price   "0.38"  ;
+.
+eg:obs9 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "09"  ;
+	 dbpedia:year   "2015"  ;
+	 cbo:price   "0.41"  ;
+.
+eg:obs10 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "10"  ;
+	 dbpedia:year   "2015"  ;
+	 cbo:price   "0.41"  ;
+.
+eg:obs11 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "11"  ;
+	 dbpedia:year   "2015"  ;
+	 cbo:price   "0.43"  ;
+.
+eg:obs12 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "12"  ;
+	 dbpedia:year   "2015"  ;
+	 cbo:price   "0.43"  ;
+.

@@ -1,0 +1,222 @@
+@prefix qb: <http://purl.org/linked-data/cube#> .
+@prefix eg: <http://example.org/ns#> .
+@prefix dbpedia: <http://dbpedia.org/ontology/> .
+@prefix cbo: <http://comicmeta.org/cbo/> .
+@prefix cf-feature: <http://purl.oclc.org/NET/ssnx/cf/cf-feature#> .
+
+eg:obs1 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "1"  ;
+	 dbpedia:year   "2015"  ;
+	 cf-feature:rainfall_amount   "55.614"  ;
+.
+eg:obs2 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "2"  ;
+	 dbpedia:year   "2015"  ;
+	 cf-feature:rainfall_amount   "48.655"  ;
+.
+eg:obs3 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "3"  ;
+	 dbpedia:year   "2015"  ;
+	 cf-feature:rainfall_amount   "17.462"  ;
+.
+eg:obs4 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "4"  ;
+	 dbpedia:year   "2015"  ;
+	 cf-feature:rainfall_amount   "24.464"  ;
+.
+eg:obs5 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "5"  ;
+	 dbpedia:year   "2015"  ;
+	 cf-feature:rainfall_amount   "0.859"  ;
+.
+eg:obs6 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "6"  ;
+	 dbpedia:year   "2015"  ;
+	 cf-feature:rainfall_amount   "0.379"  ;
+.
+eg:obs7 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "7"  ;
+	 dbpedia:year   "2015"  ;
+	 cf-feature:rainfall_amount   "0.216"  ;
+.
+eg:obs8 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "8"  ;
+	 dbpedia:year   "2015"  ;
+	 cf-feature:rainfall_amount   "0.18"  ;
+.
+eg:obs9 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "9"  ;
+	 dbpedia:year   "2015"  ;
+	 cf-feature:rainfall_amount   "0.936"  ;
+.
+eg:obs10 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "10"  ;
+	 dbpedia:year   "2015"  ;
+	 cf-feature:rainfall_amount   "1.93"  ;
+.
+eg:obs11 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "11"  ;
+	 dbpedia:year   "2015"  ;
+	 cf-feature:rainfall_amount   "3.284"  ;
+.
+eg:obs12 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "12"  ;
+	 dbpedia:year   "2015"  ;
+	 cf-feature:rainfall_amount   "11.686"  ;
+.
+eg:obs13 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "1"  ;
+	 dbpedia:year   "2016"  ;
+	 cf-feature:rainfall_amount   "12.19"  ;
+.
+eg:obs14 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "2"  ;
+	 dbpedia:year   "2016"  ;
+	 cf-feature:rainfall_amount   "28.825"  ;
+.
+eg:obs15 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "3"  ;
+	 dbpedia:year   "2016"  ;
+	 cf-feature:rainfall_amount   "61.35"  ;
+.
+eg:obs16 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "4"  ;
+	 dbpedia:year   "2016"  ;
+	 cf-feature:rainfall_amount   "12.14"  ;
+.
+eg:obs17 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "5"  ;
+	 dbpedia:year   "2016"  ;
+	 cf-feature:rainfall_amount   "1.164"  ;
+.
+eg:obs18 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "6"  ;
+	 dbpedia:year   "2016"  ;
+	 cf-feature:rainfall_amount   "0.548"  ;
+.
+eg:obs19 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "7"  ;
+	 dbpedia:year   "2016"  ;
+	 cf-feature:rainfall_amount   "0.352"  ;
+.
+eg:obs20 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "8"  ;
+	 dbpedia:year   "2016"  ;
+	 cf-feature:rainfall_amount   "0.19"  ;
+.
+eg:obs21 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "9"  ;
+	 dbpedia:year   "2016"  ;
+	 cf-feature:rainfall_amount   "0.365"  ;
+.
+eg:obs22 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "10"  ;
+	 dbpedia:year   "2016"  ;
+	 cf-feature:rainfall_amount   "3.262"  ;
+.
+eg:obs23 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "11"  ;
+	 dbpedia:year   "2016"  ;
+	 cf-feature:rainfall_amount   "12.682"  ;
+.
+eg:obs24 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "12"  ;
+	 dbpedia:year   "2016"  ;
+	 cf-feature:rainfall_amount   "28.856"  ;
+.
+eg:obs25 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "1"  ;
+	 dbpedia:year   "2017"  ;
+	 cf-feature:rainfall_amount   "85.54"  ;
+.
+eg:obs26 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "2"  ;
+	 dbpedia:year   "2017"  ;
+	 cf-feature:rainfall_amount   "68.084"  ;
+.
+eg:obs27 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "3"  ;
+	 dbpedia:year   "2017"  ;
+	 cf-feature:rainfall_amount   "56.945"  ;
+.
+eg:obs28 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "4"  ;
+	 dbpedia:year   "2017"  ;
+	 cf-feature:rainfall_amount   "5.873"  ;
+.
+eg:obs29 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "5"  ;
+	 dbpedia:year   "2017"  ;
+	 cf-feature:rainfall_amount   "1.639"  ;
+.
+eg:obs30 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "6"  ;
+	 dbpedia:year   "2017"  ;
+	 cf-feature:rainfall_amount   "0.428"  ;
+.
+eg:obs31 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "7"  ;
+	 dbpedia:year   "2017"  ;
+	 cf-feature:rainfall_amount   "0.367"  ;
+.
+eg:obs32 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "8"  ;
+	 dbpedia:year   "2017"  ;
+	 cf-feature:rainfall_amount   "0.265"  ;
+.
+eg:obs33 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "9"  ;
+	 dbpedia:year   "2017"  ;
+	 cf-feature:rainfall_amount   "0.366"  ;
+.
+eg:obs34 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "10"  ;
+	 dbpedia:year   "2017"  ;
+	 cf-feature:rainfall_amount   "10.551"  ;
+.
+eg:obs35 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "11"  ;
+	 dbpedia:year   "2017"  ;
+	 cf-feature:rainfall_amount   "12.264"  ;
+.
+eg:obs36 a qb:Observation ;
+	qb:dataSet eg:dataset-prices  ;
+	 dbpedia:month   "12"  ;
+	 dbpedia:year   "2017"  ;
+	 cf-feature:rainfall_amount   "12.709"  ;
+.
