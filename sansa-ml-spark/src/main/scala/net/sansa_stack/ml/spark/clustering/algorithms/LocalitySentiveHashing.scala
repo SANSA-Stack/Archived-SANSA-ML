@@ -133,8 +133,7 @@ class LocalitySensitiveHashing(spark: SparkSession, nTriplesRDD: RDD[Triple], di
     var silhouetteInput = connectedComponents.join(featuredData, "entities")
     val evaluator = new ClusteringEvaluator().setPredictionCol("prediction").
       setFeaturesCol("features").setMetricName("silhouette")
-    val silhouette = evaluator.evaluate(silhouetteInput)
-    println(s"Silhouette for LSH = $silhouette")    
+    val silhouette = evaluator.evaluate(silhouetteInput)   
   }
 
 }
