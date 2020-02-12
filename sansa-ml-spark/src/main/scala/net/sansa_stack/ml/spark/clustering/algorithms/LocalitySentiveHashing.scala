@@ -36,11 +36,11 @@ class LocalitySensitiveHashing(spark: SparkSession, nTriplesRDD: RDD[Triple], di
     // Extracting last part of Triples
     return nTriplesRDD.distinct()
       .map(f => {   
-        val s = f.getSubject.getURI.split("/").last
-        val p = f.getPredicate.getURI.split("/").last
+        val s = f.getSubject.getLocalName
+        val p = f.getPredicate.getLocalName
 
         if (f.getObject.isURI()) {
-          val o = f.getObject.getURI.split("/").last
+          val o = f.getObject.getLocalName
           (s, p, o)
         } else {
           val o = f.getObject.getLiteralValue
