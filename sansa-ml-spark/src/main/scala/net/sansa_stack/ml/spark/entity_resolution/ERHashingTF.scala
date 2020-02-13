@@ -34,8 +34,6 @@ class ERHashingTF(spark: SparkSession, sourceData1: RDD[Triple], sourceData2: RD
     val featuredEntitiesDf2 = hashingTf.transform(data2).filter(isNoneZeroVector(col(outCol)))
     return (featuredEntitiesDf1, featuredEntitiesDf2)
   }
-
-  run
 }
 
 object ERHashingTF {

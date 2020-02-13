@@ -32,8 +32,6 @@ class ERCountVectorizer(spark: SparkSession, sourceData1: RDD[Triple], sourceDat
     val featuredEntitiesDf2 = countVectorizer.transform(data2).filter(isNoneZeroVector(col(outCol)))
     return (featuredEntitiesDf1, featuredEntitiesDf2)
   }
-
-  run
 }
 
 object ERCountVectorizer {

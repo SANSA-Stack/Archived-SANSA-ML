@@ -22,7 +22,7 @@ class ERTests extends FunSuite with DataFrameSuiteBase {
   test("performing entity resolution using HashingTF method should result in 2 matches") {
     var outputRDD: RDD[(String, String, Double)] = null
 
-    val erTest1 = new ERHashingTF(spark, triplesSource1, triplesSource2, 0.10, 0.50, 0.20, 6)
+    val erTest1 = new ERHashingTF(spark, triplesSource1, triplesSource2, 0.15, 0.30, 0.50, 3)
     outputRDD = erTest1.run()
     val predictedRDD = outputRDD.map(f => {
       (f._1 + " : " + f._2)
@@ -31,11 +31,10 @@ class ERTests extends FunSuite with DataFrameSuiteBase {
     val cnt = teacherRDD.intersection(predictedRDD).count()
     assert(cnt==2)
   }
-
   test("performing entity resolution using CountVetcorizerModel method should result in 2 matches") {
     var outputRDD: RDD[(String, String, Double)] = null
 
-    val erTest2 = new ERCountVectorizer(spark, triplesSource1, triplesSource2, 0.10, 0.50, 0.20, 8)
+    val erTest2 = new ERCountVectorizer(spark, triplesSource1, triplesSource2, 0.10, 0.40, 0.50, 5)
     outputRDD = erTest2.run()
     val predictedRDD = outputRDD.map(f => {
       (f._1 + " : " + f._2)
@@ -44,7 +43,6 @@ class ERTests extends FunSuite with DataFrameSuiteBase {
     val cnt = teacherRDD.intersection(predictedRDD).count()
     assert(cnt==2)
   }
-
 }
 
 
