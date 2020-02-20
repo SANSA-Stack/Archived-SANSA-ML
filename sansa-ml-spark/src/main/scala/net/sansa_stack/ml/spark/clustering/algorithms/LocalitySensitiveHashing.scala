@@ -1,4 +1,4 @@
-package net.sansa_stack.template.spark.rdf
+package net.sansa_stack.ml.spark.clustering.algorithms
 
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.rdd.RDD
@@ -13,6 +13,9 @@ import org.apache.spark.mllib.linalg.Vector
 import org.graphframes._
 import org.graphframes.GraphFrame
 import org.apache.spark.ml.evaluation.ClusteringEvaluator
+import java.nio.file.attribute.BasicFileAttributes
+import java.nio.file._
+import java.io._
 
 /*
  *
@@ -85,7 +88,6 @@ class LocalitySensitiveHashing(spark: SparkSession, nTriplesRDD: RDD[Triple], di
   def calculateVocabsize(cleandfrdd: RDD[Row]): Int = {
     val vocab = cleandfrdd.map(_.mkString).reduce(_ + ", " + _).split(", ").toSet
     return (vocab.size)
-
   }
 
   def minHashLSH(featuredData_Df: DataFrame): (MinHashLSHModel, DataFrame) = {
@@ -118,17 +120,42 @@ class LocalitySensitiveHashing(spark: SparkSession, nTriplesRDD: RDD[Triple], di
     
     // Connected Components are the generated clusters.
     val connected_components = g.connectedComponents.run()
+
+    //Removing the graphframes checkpoint directory
+    val file_path = Paths.get(dir_path)
+    removePathFiles(file_path)
+
     val connected_components_ = connected_components.withColumnRenamed("component", "prediction").
       withColumnRenamed("id", "entities")
     clusterQuality(connected_components_, featuredData)
   }
-  
+
+  /*
+   * Removing the graphframes checkpoint directory.
+   */
+
+  def removePathFiles(root: Path): Unit = {
+    if (Files.exists(root)) {
+      Files.walkFileTree(root, new SimpleFileVisitor[Path] {
+        override def visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult = {
+          Files.delete(file)
+          FileVisitResult.CONTINUE
+        }
+
+        override def postVisitDirectory(dir: Path, exc: IOException): FileVisitResult = {
+          Files.delete(dir)
+          FileVisitResult.CONTINUE
+        }
+      })
+    }
+  }
+
   /*
    * Calculating Silhouette score, which will tell how good clusters are.
    * Silhouette values ranges from [-1,1]. 
    * Values closer to 1 indicates better clusters
    */
-  
+
   def clusterQuality(connectedComponents: DataFrame , featuredData: DataFrame) = {
     var silhouetteInput = connectedComponents.join(featuredData, "entities")
     val evaluator = new ClusteringEvaluator().setPredictionCol("prediction").
