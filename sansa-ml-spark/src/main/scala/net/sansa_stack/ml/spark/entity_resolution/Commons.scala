@@ -88,7 +88,7 @@ abstract class Commons(val spark: SparkSession, val sourceData1: RDD[Triple], va
           val value = pred + ":" + obj // predicate and object are seperated by ':'
           (key, value)
         } else {
-          val obj = f.getObject.getLiteral.toString().split(Array('^', '@')).head.trim()
+          val obj = f.getObject.getLiteral.getLexicalForm()
           val value = pred + ":" + obj.replace(":", "")
           (key, value)
         }
