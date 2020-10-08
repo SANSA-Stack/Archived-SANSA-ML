@@ -1,3 +1,9 @@
+# Archived Repository - Do not use this repository anymore!
+
+SANSA got easier to use! All its code has been consolidated into a single repository at https://github.com/SANSA-Stack/SANSA-Stack
+
+
+
 # SANSA-ML
 [![Maven Central](https://maven-badges.herokuapp.com/maven-central/net.sansa-stack/sansa-ml-parent_2.11/badge.svg)](https://maven-badges.herokuapp.com/maven-central/net.sansa-stack/sansa-ml-parent_2.11)
 [![Build Status](https://ci.aksw.org/jenkins/job/SANSA-ML/job/develop/badge/icon)](https://ci.aksw.org/jenkins/job/SANSA-ML//job/develop/)
