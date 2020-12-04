@@ -61,6 +61,12 @@
 			<artifactId>spark-mllib_${scala.binary.version}</artifactId>
 			<version>${spark.version}</version>
 		</dependency>
+		<!-- https://mvnrepository.com/artifact/graphframes/graphframes -->
+        <dependency>
+            <groupId>graphframes</groupId>
+            <artifactId>graphframes</artifactId>
+            <version>0.7.0-spark2.4-s_2.11</version>
+        </dependency>
 		<!-- https://mvnrepository.com/artifact/com.github.fommil.netlib/all -->
 		<dependency>
 			<groupId>com.github.fommil.netlib</groupId>
